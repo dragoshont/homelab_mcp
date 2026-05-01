@@ -337,9 +337,15 @@ def test_readonly_error_message_preserves_legacy_dash():
 
 
 def test_policy_write_tools_are_extracted_without_changing_server_compatibility():
-    """server.py must keep the legacy _WRITE_TOOLS surface while policy owns the set."""
+    """policy.WRITE_TOOLS is the single source of truth for mutating tools.
+
+    Phase 1.0: server.py is a thin orchestrator. The legacy
+    ``_WRITE_TOOLS = _POLICY_WRITE_TOOLS`` alias now lives in
+    _runtime.py. The contract is unchanged: somewhere in the package a
+    module imports ``WRITE_TOOLS`` from ``policy`` and re-exposes it as
+    ``_WRITE_TOOLS`` for backward compatibility.
+    """
     policy = _parse(POLICY)
-    server = SERVER.read_text(encoding="utf-8")
     policy_names = {
         target.id
         for node in policy.body
@@ -348,8 +354,9 @@ def test_policy_write_tools_are_extracted_without_changing_server_compatibility(
         if isinstance(target, ast.Name)
     }
     assert "WRITE_TOOLS" in policy_names
-    assert "from homelab_mcp.policy import WRITE_TOOLS as _POLICY_WRITE_TOOLS" in server
-    assert "_WRITE_TOOLS = _POLICY_WRITE_TOOLS" in server
+    runtime = (PACKAGE_ROOT / "_runtime.py").read_text(encoding="utf-8")
+    assert "from homelab_mcp.policy import WRITE_TOOLS as _POLICY_WRITE_TOOLS" in runtime
+    assert "_WRITE_TOOLS = _POLICY_WRITE_TOOLS" in runtime
 
 
 def test_console_script_keeps_server_main_compatibility():
@@ -372,3 +379,66 @@ def test_dockerfile_sets_home_before_user(_=None):
     assert user_match is not None, "Dockerfile must declare USER 1000:..."
     assert home_match.start() < user_match.start(), \
         "ENV HOME=... must appear BEFORE USER 1000:1000 (BUG-006)"
+
+# --- Phase 1.0 split structure regression tests ---
+
+
+def test_phase_1_0_server_is_thin_orchestrator():
+    """Phase 1.0 contract MP-6: server.py < 80 lines, no @mcp.tool decorators.
+
+    Detects regression where a tool gets re-added to server.py during a
+    domain-extraction phase. server.py must remain a thin orchestrator
+    that imports _runtime + each tools/{domain} module.
+    """
+    server = (PACKAGE_ROOT / "server.py").read_text(encoding="utf-8")
+    line_count = server.count("\n") + 1
+    assert line_count < 80, (
+        f"server.py is {line_count} lines; Phase 1.0 contract caps it at 80. "
+        f"If you need to add code, put it in _runtime.py or tools/<domain>.py."
+    )
+    tree = ast.parse(server)
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for dec in node.decorator_list:
+                assert "mcp.tool" not in ast.unparse(dec), (
+                    f"server.py defines a tool ({node.name!r}); tools must "
+                    f"live in tools/<domain>.py per Phase 1.0 contract."
+                )
+
+
+def test_phase_1_0_tools_package_has_five_domain_modules():
+    """Phase 1.0 contract MP-5: every domain tool module is self-contained."""
+    tools_dir = PACKAGE_ROOT / "tools"
+    assert tools_dir.is_dir(), "mcp/src/homelab_mcp/tools/ must exist"
+    expected = {"platform.py", "media.py", "network.py", "homeauto.py",
+                "control.py", "__init__.py"}
+    actual = {p.name for p in tools_dir.iterdir() if p.is_file()}
+    missing = expected - actual
+    assert not missing, f"tools/ missing required modules: {sorted(missing)}"
+
+
+def test_phase_1_0_tool_count_per_domain_matches_inventory():
+    """Phase 1.0 contract MP-1: each domain module's tool count matches inventory."""
+    import json
+    inv_path = Path(__file__).resolve().parents[2] / "docs" / "migration" / "tool-inventory.json"
+    inv = json.loads(inv_path.read_text(encoding="utf-8"))
+    expected_counts: dict[str, int] = {}
+    for entry in inv["tools"]:
+        full = entry["server"]
+        assert full.startswith("homelab-mcp-"), full
+        domain = full[len("homelab-mcp-"):]
+        expected_counts[domain] = expected_counts.get(domain, 0) + 1
+
+    for domain, expected in expected_counts.items():
+        path = PACKAGE_ROOT / "tools" / f"{domain}.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        actual = sum(
+            1
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and any("mcp.tool" in ast.unparse(d) for d in node.decorator_list)
+        )
+        assert actual == expected, (
+            f"tools/{domain}.py has {actual} @mcp.tool functions but the "
+            f"inventory expects {expected} for that domain."
+        )
