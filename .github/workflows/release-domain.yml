@@ -28,6 +28,10 @@ on:
 permissions:
   contents: read
   packages: write
+  # Required for cosign keyless signing via the workflow's OIDC token.
+  id-token: write
+  # Required to push SLSA provenance attestations alongside the image.
+  attestations: write
 
 concurrency:
   # Discriminate by the actual tag being released. For tag-push events
@@ -100,27 +104,23 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build and push ${{ steps.parse.outputs.domain }} (v${{ steps.parse.outputs.version }})
-        uses: docker/build-push-action@v6
+        uses: ./.github/actions/build-mcp-image
         with:
           context: mcp
-          file: mcp/Dockerfile.domain
+          dockerfile: mcp/Dockerfile.domain
           build-args: |
             DOMAIN=${{ steps.parse.outputs.domain }}
-          platforms: linux/amd64
+          # Multi-arch on releases (linux/amd64 + linux/arm64) so
+          # OSS consumers on RPi / Apple Silicon get a runnable image.
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.parse.outputs.tags }}
-          push: true
-          provenance: false
+          push: "true"
           # Per-domain cache scope so the five images don't poison each
           # other's cache (each has different runtime env defaults).
-          cache-from: type=gha,scope=domain-${{ steps.parse.outputs.domain }}
-          cache-to: type=gha,scope=domain-${{ steps.parse.outputs.domain }},mode=max
+          cache-scope: domain-${{ steps.parse.outputs.domain }}
+          # Supply-chain hardening matches the bundle release.
+          sign: "true"
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
