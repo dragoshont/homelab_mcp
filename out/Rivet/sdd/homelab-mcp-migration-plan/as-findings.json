@@ -177,6 +177,83 @@
     "AS-4 (high): design.md §5 control auth row softened (static bearer token from K8s Secret; rotation policy declared in Phase 4 SDD).",
     "AS-5..14 (medium/low): see individual `action` fields; all dispositioned and either applied or deferred per the action text."
   ],
+  "post_review_audit_2026_05_01": {
+    "scope": "User-experience and connectivity audit comparing the design against gold-standard MCP servers (microsoft/playwright-mcp, modelcontextprotocol/servers reference set).",
+    "verdict_after_adversarial": "PROCEED with edits applied",
+    "findings": [
+      {
+        "id": "UX-1",
+        "title": "stdio transport excluded from §5",
+        "severity": "high",
+        "rule": "AS-002",
+        "description": "Original §5 said 'Streamable HTTP, in-cluster' for all servers. Reference MCP clients (Claude Desktop, VS Code, Cursor, Copilot) default to stdio transport, so HTTP-only would exclude ~80% of MCP users.",
+        "adversarial_check": "stdio is essential for the bundle running locally where target services are reachable; in-cluster split servers can stay HTTP because operators have direct cluster access. Framing was wrong; both transports are needed but for different deployment shapes.",
+        "action": "design.md §4.5 added: stdio default for local; HTTP behind --transport=streamable-http for shared/remote. Bundle MUST support both.",
+        "applied_in_pr": true
+      },
+      {
+        "id": "UX-2",
+        "title": "PyPI distribution missing from §4.2",
+        "severity": "high",
+        "rule": "AS-005",
+        "description": "§4.2 was container-only. uvx homelab-mcp-platform is the canonical first-5-min MCP path; without PyPI, Python developers and uvx-configured clients cannot use the servers.",
+        "adversarial_check": "Containers ARE mandatory for platform/control (kubectl/ssh/git system deps). For media/network/homeauto/bundle the deps are HTTP-only — pure-Python publish is feasible. Per-server table needed.",
+        "action": "design.md §4.5 added a 'Distribution channel per server' table: media/network/homeauto/bundle ship to PyPI; platform/control are container-only because of system binaries.",
+        "applied_in_pr": true
+      },
+      {
+        "id": "UX-3",
+        "title": "CLI flag/env-var equivalence not declared",
+        "severity": "medium",
+        "rule": "AS-006",
+        "description": "§4.4 documented env vars; Claude Desktop and many MCP clients pass config via args, not env. Without a CLI flag for every env var, the most common client cannot configure us.",
+        "adversarial_check": "Implementing the full flag table is a Phase 1 detail. Phase 0 should declare the principle only — every env var has a mechanically-derived CLI flag (SONARR_URL ↔ --sonarr-url, lowercase + hyphens) — and Phase 1 wires it.",
+        "action": "design.md §4.5 declares the principle and the mapping rule. Implementation is Phase 1.",
+        "applied_in_pr": true
+      },
+      {
+        "id": "UX-4",
+        "title": "Per-server README scaffold missing",
+        "severity": "medium",
+        "rule": "AS-007",
+        "description": "Without per-server README + install snippet for the top MCP clients, Docker MCP catalog and GitHub MCP registry submissions are blocked. Test passes for the wrong reason: 'we have a scaffold' becomes 'tick the box' without real content.",
+        "adversarial_check": "Real risk: scaffold without content is a false-positive UX gate. The repo root README is the actual entry point and was just a placeholder. Phase 0 should fix the root README and ship a README template; Phase 1 owns per-server population.",
+        "action": "Root README.md rewritten with project description, server map (133 tool budget verified), install/setup notes, and a link to the migration plan. design.md §4.5 declares the per-server README requirement and links to a template.",
+        "applied_in_pr": true
+      },
+      {
+        "id": "UX-5",
+        "title": "No license file blocks downstream distribution",
+        "severity": "high",
+        "rule": "SEA-001",
+        "description": "Without a LICENSE file: Docker MCP catalog C2 gate fails, GHCR images cannot be reused legally by third parties, and contributions cannot be accepted.",
+        "adversarial_check": "MIT vs Apache-2.0: Apache provides explicit patent grants; MIT is simpler and broader. Source repo C:\\src\\homelab has no LICENSE so there is no incompatibility risk. Either is acceptable to Docker MCP catalog. MIT chosen for simplicity.",
+        "action": "LICENSE file added at repo root (MIT, Copyright 2026 Dragos Hont).",
+        "applied_in_pr": true
+      },
+      {
+        "id": "UX-6",
+        "title": "No versioning/deprecation/error-envelope contract",
+        "severity": "medium",
+        "rule": "SEA-005",
+        "description": "Without a declared semver policy, tool-rename/removal window, and standard error envelope, every Phase 1+ release risks breaking downstream MCP client configs in undocumented ways.",
+        "adversarial_check": "Real but Phase 0 only needs the policy text, not the implementation. Per-tool error code enumeration is Phase 1. /healthz is k8s-required; OTEL is over-engineering for v1 and is explicitly deferred.",
+        "action": "design.md §4.6 added: semver per package, deprecation window (one minor warn, next major remove), standard error envelope schema {error, code, service, missing_config?, retryable, details}, /healthz + /readyz mandatory, OTEL explicitly deferred.",
+        "applied_in_pr": true
+      },
+      {
+        "id": "UX-7",
+        "title": "Per-tool capability filter risks G1 inventory parity",
+        "severity": "medium",
+        "rule": "AS-001",
+        "description": "Audit initially proposed --enabled-tools=tool1,tool2 to subset a server's tool surface. This contradicts G1 (inventory parity): the server-vs-inventory tool name comparison would fail when a filter is active.",
+        "adversarial_check": "Real risk. Either G1 must be conditioned on 'no filter active' (weakens the gate) or the filter must use named tool-set profiles enumerated in tool-inventory.json (so set comparison still works against the active profile). Free-form filter is unsafe.",
+        "action": "Deferred to a later phase. design.md §4.5 notes it as Q12 rather than implementing it.",
+        "applied_in_pr": false
+      }
+    ]
+  },
   "verdict": "PROCEED with edits",
-  "rationale": "Zero critical findings. Four high findings are all addressable by spec/design strengthening (no code changes). Seven medium findings are deferred to Phase 1 SDD per their dispositions. Three low findings are notes. The plan structure is sound; the gaps are in enforcement specificity, not in architectural choice."
+  "rationale": "Zero critical findings. Four high findings are all addressable by spec/design strengthening (no code changes). Seven medium findings are deferred to Phase 1 SDD per their dispositions. Three low findings are notes. The plan structure is sound; the gaps are in enforcement specificity, not in architectural choice. UX audit on 2026-05-01 added 6 P0/P1 items (UX-1..UX-6) all applied to design.md §4.5/§4.6 + repo LICENSE/README; UX-7 explicitly deferred."
 }
+

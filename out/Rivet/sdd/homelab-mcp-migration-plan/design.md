@@ -576,6 +576,202 @@ config block and fails on any mismatch.
   needed later, the Phase 1+ SDD that introduces it adds `*_2_URL` /
   `*_2_API_KEY` or moves to a JSON list — out of scope here.
 
+### 4.5 Distribution and transport contract (UX-1, UX-2, UX-3, UX-4)
+
+#### 4.5.1 Transports per server
+
+Reference MCP clients (Claude Desktop, VS Code MCP, Cursor, Goose,
+Continue) overwhelmingly use **stdio**. Streamable HTTP is necessary for
+in-cluster / OpenWebUI deployments. Each split server supports both, and
+the choice is at startup:
+
+| Server | Default transport | Both supported? | Notes |
+|--------|-------------------|-----------------|-------|
+| `homelab-mcp-platform` | stdio | yes | HTTP for in-cluster |
+| `homelab-mcp-media` | stdio | yes | HTTP for in-cluster |
+| `homelab-mcp-network` | stdio | yes | HTTP for in-cluster |
+| `homelab-mcp-homeauto` | stdio | yes | HTTP for in-cluster |
+| `homelab-mcp-control` | stdio (BUT see §5) | yes — HTTP **strongly preferred** for production | stdio acceptable only when target services are reachable from the same machine; production deployments use HTTP + bearer token |
+| `homelab-mcp-bundle` | HTTP (it's a multi-server demux) | stdio is N/A for bundle (one stdio pair = one MCP session = one server's tools) | bundle is HTTP-only by definition |
+
+**Important reality check:** stdio matters for users who run **all the
+target services on the same machine as the MCP client** — for example, a
+Plex server, a Sonarr/Radarr stack, and Claude Desktop all on one
+homelab box. For deployments where the MCP client (a laptop running
+Claude Desktop) is **not** on the same network as the target services,
+HTTP is the only working answer; stdio cannot reach
+`sonarr.media.svc.cluster.local`.
+
+This is documented prominently in each server's README so users do not
+copy the stdio snippet and then ask "why can't it reach my Sonarr."
+
+#### 4.5.2 Distribution shape per server
+
+| Server | PyPI? | Container? | Why |
+|--------|-------|-----------|-----|
+| `homelab-mcp-platform` | no — container only | yes | Hard system dependencies: `kubectl`, `ssh`, `git`, `flux` CLI. PyPI install would silently break for users without these. |
+| `homelab-mcp-media` | yes | yes | Pure HTTP clients (httpx). PyPI is canonical; container is for K8s. |
+| `homelab-mcp-network` | yes | yes | Pure HTTP client. |
+| `homelab-mcp-homeauto` | yes | yes | Pure HTTP clients + DIRIGERA SDK. |
+| `homelab-mcp-control` | no — container only | yes | Same system deps as platform (kube_restart needs `kubectl`). |
+| `homelab-mcp-bundle` | yes (limited) AND container (full) | yes | PyPI bundle ships only the PyPI-compatible servers (media + network + homeauto); the container ships all five. README is explicit about which subset PyPI gives you. |
+
+PyPI distribution is a **third workflow** added to §4.2:
+`release-pypi.yml` — triggers on the same `release: published` event as
+`release-images.yml`, builds wheels via `uv build`, publishes to PyPI
+via `pypa/gh-action-pypi-publish` with **trusted publishing**
+(no `PYPI_TOKEN` secret required; OIDC-based). Falls back to a token
+secret `PYPI_TOKEN` if trusted publishing isn't configured.
+
+#### 4.5.3 Configuration sources and precedence
+
+Three sources, precedence highest first:
+
+1. **CLI flags** (`--sonarr-url`, `--readonly`, `--port`, `--transport`).
+   Required for MCP clients that pass config via `args` (Claude Desktop
+   pattern). Mechanical mapping: `SONARR_URL` env var ↔ `--sonarr-url`
+   flag (lowercase, underscores → dashes).
+2. **Environment variables** (per §4.4). Required for K8s and Docker
+   Compose deployments where args are awkward.
+3. **Config file** (bundle only): `--config bundle.yaml` per §4.1.
+   Used for the bundle's per-server enable/disable + per-server env
+   override. Single-server entrypoints do NOT load a config file —
+   keeps the simple cases simple.
+
+#### 4.5.4 Why no PyPI for platform / control
+
+Stating this once and clearly so it does not become a recurring
+question: **the platform and control servers depend on system binaries
+that are not Python packages**. `kubectl` is a Go binary. `ssh` and
+`git` are typically system-installed. `flux` is a Go binary. Shipping
+these via PyPI would either bundle 100MB+ binaries (unmaintainable) or
+silently fail for users who don't already have them. **Container is the
+right answer.** PyPI install for platform/control is **explicitly
+rejected**, not deferred.
+
+#### 4.5.5 Per-client install snippets (delivered in Phase 1 README)
+
+Each server's README ships paste-ready snippets for the major MCP
+clients. Phase 1 produces the actual per-server READMEs; the **shape**
+is fixed here so clients are not missed:
+
+- Claude Desktop (stdio)
+- VS Code MCP (stdio + remote HTTP variant)
+- Cursor
+- Goose
+- Continue
+- OpenWebUI (HTTP)
+- Generic Streamable HTTP example
+
+The list is taken from the Playwright-MCP README (the gold-standard MCP
+README in the ecosystem) and trimmed to clients with non-trivial homelab
+overlap. New clients added by Phase N+ SDDs.
+
+### 4.6 Stability contract (UX-5, UX-6)
+
+#### 4.6.1 Versioning
+
+- Each Python package (`homelab-mcp-{server}`, `homelab-mcp-core`,
+  `homelab-mcp-bundle`) is independently versioned with **semver
+  (MAJOR.MINOR.PATCH)**.
+- The set of **tool names** registered by a server is part of its
+  public API. Renaming or removing a tool is a **MINOR** bump with a
+  one-minor deprecation window; a hard removal without a deprecation
+  cycle is a **MAJOR** bump.
+- Adding a new tool is a **MINOR** bump (additive, non-breaking).
+- Bug fixes and internal refactors are **PATCH**.
+- Container tags follow the package version exactly:
+  `dragoshont/homelab-mcp-media:1.4.2`. Floating `:1`, `:1.4`, and
+  `:latest` tags are also published per major / minor / latest-release.
+- The **bundle** version tracks the highest of its constituent
+  packages' MAJOR; bumping any constituent's MAJOR bumps the bundle's
+  MAJOR.
+
+Each server-package's `CHANGELOG.md` is mandatory and follows
+[Keep a Changelog](https://keepachangelog.com).
+
+#### 4.6.2 Tool deprecation policy
+
+Renaming or removing a tool requires:
+
+1. The new tool name registered alongside the old in the next MINOR
+   release. Both call into the same implementation.
+2. The old tool's docstring prepended with `[deprecated, use X
+   instead, removal target: vN.0.0]`.
+3. A `WARNING` log entry every time the deprecated tool is invoked.
+4. A `CHANGELOG.md` entry in the deprecating release noting the
+   deprecation and the removal target.
+5. Removal in the next MAJOR (no exceptions; no in-MINOR removals).
+
+Reasoning: any user with an MCP client config referencing tool X cannot
+fix their config until they notice it broke. The deprecation cycle gives
+them at least one MINOR release of warnings.
+
+#### 4.6.3 Error envelope contract
+
+Every tool — across all 5 servers + bundle — returns either success
+data or a structured error of this exact shape:
+
+```json
+{
+  "error": {
+    "code": "service_not_configured",
+    "service": "sonarr",
+    "message": "human-readable summary",
+    "details": {"missing_config": ["SONARR_URL", "SONARR_API_KEY"]},
+    "retryable": false
+  }
+}
+```
+
+Required fields: `code` (snake_case identifier), `message` (one
+sentence). Optional: `service`, `details`, `retryable`.
+
+Required `code` values (all servers):
+
+| Code | Meaning | retryable |
+|------|---------|-----------|
+| `service_not_configured` | Required env var unset; tool is registered but cannot run | false |
+| `service_unreachable` | Network failure / timeout / DNS / connection refused | true |
+| `auth_failed` | Service rejected credentials | false |
+| `permission_denied` | Service was reached but the configured credential lacks access | false |
+| `not_found` | Requested resource does not exist | false |
+| `invalid_input` | Tool arguments failed validation | false |
+| `rate_limited` | Upstream service rate-limited us | true |
+| `internal_error` | Bug in the MCP server itself | false |
+| `readonly_violation` | Mutating tool called on a read-only server (per §6 G2) | false |
+
+Tools MUST NOT raise unhandled exceptions back to the MCP transport.
+Phase 1 lifts a shared `with_error_envelope()` decorator into
+`homelab-mcp-core`.
+
+#### 4.6.4 Health and readiness endpoints (HTTP transport only)
+
+Each server's HTTP transport additionally exposes:
+
+- `GET /healthz` — process is alive. Returns `200 {"status":"ok"}`.
+  No service connectivity check.
+- `GET /readyz` — process is ready to serve. Returns `200` if all
+  configured services responded to a quick probe in the last 30 seconds,
+  `503` with a JSON list of unreachable services otherwise.
+- `GET /version` — returns `{"package": "homelab-mcp-platform",
+  "version": "1.4.2", "tools": 51, "commit": "<sha>"}`.
+
+These are not MCP tools (not in the registered set; not in
+`tool-inventory.json`). They are HTTP-only operational endpoints. The
+stdio transport has no equivalent — the process is alive iff the stdio
+pair is open.
+
+#### 4.6.5 Telemetry
+
+**No telemetry by default.** Phase 1 ships zero outbound metrics. The
+audit log written locally is the only observation surface.
+
+A future SDD MAY add an opt-in OpenTelemetry export (anonymous tool-
+invocation counts and latency histograms; never tool arguments, never
+return values, never service URLs). It is out of scope for Phase 0 / 1
+and **must not** ship enabled by default.
+
 ## 5. Transport and security
 
 | Concern | Readonly servers | Control server |

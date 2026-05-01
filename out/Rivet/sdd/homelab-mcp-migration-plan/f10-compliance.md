@@ -1,6 +1,6 @@
 # F10 Compliance — homelab-mcp-migration-plan (#0)
 
-Generated: 2026-05-01 10:39 UTC
+Generated: 2026-05-01 11:43 UTC
 
 | Step | Name | Status | Artifact | Evidence |
 |------|------|--------|----------|----------|
