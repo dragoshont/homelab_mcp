@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,10 @@ def configure_audit_logger(path: Path) -> logging.Logger:
 
     logger = logging.getLogger(AUDIT_LOGGER_NAME)
     logger.setLevel(logging.INFO)
+    # BUG-007 fix: don't propagate to the root logger. Audit records must
+    # land exactly once in the configured file; propagation duplicates them
+    # to any operator-installed root handler (stderr, structured logs).
+    logger.propagate = False
 
     audit_path = str(path)
     for existing_handler in list(logger.handlers):
@@ -38,7 +43,26 @@ def configure_audit_logger(path: Path) -> logging.Logger:
     return logger
 
 
+def _safe_status(value: str) -> str:
+    """Strip control characters from the status column.
+
+    Tab and newline would split the audit row into extra columns / extra
+    lines and break the 4-column contract.
+    """
+    return value.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
 def audit(logger: logging.Logger, tool_name: str, params: dict, result_summary: str = "ok") -> None:
-    """Log a tool call to the audit file."""
+    """Log a tool call to the audit file.
+
+    The on-disk format is a tab-separated 4-column row:
+        <iso8601-utc>\\t<tool_name>\\t<params-json>\\t<status>
+
+    BUG-008 fix: params is JSON-encoded with no embedded whitespace and
+    status is sanitised, so user-supplied values can never split a record
+    across columns / lines (log forging).
+    """
     ts = datetime.now(timezone.utc).isoformat()
-    logger.info(f"{ts}\t{tool_name}\t{params}\t{result_summary}")
+    params_json = json.dumps(params, separators=(",", ":"), default=str, sort_keys=True)
+    status = _safe_status(result_summary)
+    logger.info(f"{ts}\t{tool_name}\t{params_json}\t{status}")

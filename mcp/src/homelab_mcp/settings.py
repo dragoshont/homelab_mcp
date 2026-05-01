@@ -71,11 +71,15 @@ def audit_log_path() -> Path:
     Empty-string env (e.g. HOMELAB_MCP_AUDIT_LOG="") falls back to the default
     rather than producing Path("") which resolves to the current directory and
     then fails with IsADirectoryError when opened as a file.
+
+    BUG-009 fix: expanduser is applied to the operator-supplied value too,
+    so HOMELAB_MCP_AUDIT_LOG="~/logs/audit.log" expands to the user's home
+    instead of being written as a literal "~"-prefixed path.
     """
     raw = os.environ.get("HOMELAB_MCP_AUDIT_LOG", "").strip()
     if not raw:
-        raw = os.path.expanduser("~/homelab-mcp/audit.log")
-    return Path(raw)
+        raw = "~/homelab-mcp/audit.log"
+    return Path(os.path.expanduser(raw))
 
 
 def require_env(name: str, hint: str = "") -> str:

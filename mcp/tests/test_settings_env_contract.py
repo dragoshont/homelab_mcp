@@ -250,6 +250,22 @@ def test_audit_log_path_explicit_value_honored(monkeypatch, tmp_path):
     assert audit_log_path() == target
 
 
+def test_audit_log_path_expands_tilde_in_operator_value(monkeypatch):
+    """BUG-009: ~ in the operator-supplied path must be expanded.
+
+    Previously only the fallback path went through expanduser(); a
+    ``HOMELAB_MCP_AUDIT_LOG=~/logs/audit.log`` was wrapped as
+    ``Path("~/logs/audit.log")`` literally and then failed at open()
+    because no directory called "~" existed.
+    """
+    import os
+    from homelab_mcp.settings import audit_log_path
+    monkeypatch.setenv("HOMELAB_MCP_AUDIT_LOG", "~/logs/audit.log")
+    p = audit_log_path()
+    assert "~" not in str(p), f"path should not contain literal ~: {p}"
+    assert str(p).startswith(os.path.expanduser("~"))
+
+
 def test_env_flag_strips_whitespace(monkeypatch):
     """YAML and .env files easily introduce trailing spaces; truthy intent
     must not silently flip to False because of whitespace."""
