@@ -13,7 +13,17 @@ dependencies = [
 ]
 
 [project.scripts]
+# Bundle entry: registers all five domains. Drop-in for the
+# pre-Phase-1.0 monolith console script.
 homelab-mcp = "homelab_mcp.server:main"
+# Per-domain entry points (Phase 1.1+): each registers exactly one
+# tools/{domain} module so the resulting server exposes only that
+# domain's tools.
+homelab-mcp-platform = "homelab_mcp.entrypoints:_main_platform"
+homelab-mcp-media = "homelab_mcp.entrypoints:_main_media"
+homelab-mcp-network = "homelab_mcp.entrypoints:_main_network"
+homelab-mcp-homeauto = "homelab_mcp.entrypoints:_main_homeauto"
+homelab-mcp-control = "homelab_mcp.entrypoints:_main_control"
 
 [build-system]
 requires = ["hatchling"]
