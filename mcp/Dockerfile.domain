@@ -19,7 +19,15 @@
 FROM python:3.12-slim
 
 ARG DOMAIN
-RUN test -n "$DOMAIN" || (echo "DOMAIN build-arg is required (one of: platform media network homeauto control)" && exit 1)
+# Validate against the supported set up-front. ``test -n`` alone would
+# accept a typo (e.g. ``-network`` or ``netwrk``) which would still
+# produce a publishable image that only crashes at container startup
+# when the symlink target turns out to be missing. Failing here makes
+# CodeRabbit-equivalent issues caught at build time, not in production.
+RUN case "$DOMAIN" in \
+      platform|media|network|homeauto|control) ;; \
+      *) echo "DOMAIN build-arg must be one of: platform media network homeauto control (got: '$DOMAIN')" >&2; exit 1 ;; \
+    esac
 
 WORKDIR /app
 COPY pyproject.toml .
@@ -46,7 +54,12 @@ ENV HOMELAB_MCP_DOMAIN=${DOMAIN}
 # and exec-form is less forgiving than shell-form). Resolving the script
 # at build time means ``docker inspect`` shows the exact binary the
 # container will exec, which makes the trust boundary auditable.
-RUN ln -s "/usr/local/bin/homelab-mcp-${DOMAIN}" /usr/local/bin/_homelab-mcp-entry
+#
+# ``test -x`` ensures the symlink target actually exists; a successful
+# pip install + a typo in pyproject's [project.scripts] would otherwise
+# produce a dangling symlink and a publishable-but-broken image.
+RUN test -x "/usr/local/bin/homelab-mcp-${DOMAIN}" \
+    && ln -s "/usr/local/bin/homelab-mcp-${DOMAIN}" /usr/local/bin/_homelab-mcp-entry
 
 USER 1000:1000
 

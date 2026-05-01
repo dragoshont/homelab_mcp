@@ -153,10 +153,14 @@ server, so the resulting per-domain image exposes exactly that
 domain's tools (and no others).
 
 Per-domain release tags are `<domain>-vX.Y.Z` (e.g. `network-v0.1.0`)
-and publish to:
+and publish to both registries with multiple tags per release:
 
-- `ghcr.io/dragoshont/homelab-mcp-{domain}:{version,latest}`
-- `docker.io/hserver/homelab-mcp-{domain}:{version,latest}`
+- `ghcr.io/dragoshont/homelab-mcp-{domain}:{version}`
+- `ghcr.io/dragoshont/homelab-mcp-{domain}:v{version}`
+- `ghcr.io/dragoshont/homelab-mcp-{domain}:latest` (non-prereleases only)
+- `docker.io/hserver/homelab-mcp-{domain}:{version}`
+- `docker.io/hserver/homelab-mcp-{domain}:v{version}`
+- `docker.io/hserver/homelab-mcp-{domain}:latest` (non-prereleases only)
 
 Set-equality with the 133/29/104 totals is enforced by
 `tools/verify_lift.py` on every change.
