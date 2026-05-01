@@ -1,0 +1,94 @@
+name: Release monolith (GHCR + Docker Hub)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag to release (e.g. v1.1.1)
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-monolith-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Compute version
+        id: ver
+        run: |
+          ref="${{ inputs.tag || github.ref_name }}"
+          # Strip leading refs/tags/ if present
+          ref="${ref#refs/tags/}"
+          # Strip leading v
+          ver="${ref#v}"
+          if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::tag '$ref' is not a valid semver vX.Y.Z[-pre]"
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "tagref=$ref" >> "$GITHUB_OUTPUT"
+          if [[ "$ver" == *"-"* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build tag list
+        id: tags
+        run: |
+          owner="${{ github.repository_owner }}"
+          ver="${{ steps.ver.outputs.version }}"
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/${owner}/homelab-mcp:${ver}"
+            echo "ghcr.io/${owner}/homelab-mcp:v${ver}"
+            echo "docker.io/${owner}/homelab-mcp:${ver}"
+            echo "docker.io/${owner}/homelab-mcp:v${ver}"
+            if [[ "${{ steps.ver.outputs.is_prerelease }}" == "false" ]]; then
+              echo "ghcr.io/${owner}/homelab-mcp:latest"
+              echo "docker.io/${owner}/homelab-mcp:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push release
+        uses: ./.github/actions/build-mcp-image
+        with:
+          tags: ${{ steps.tags.outputs.tags }}
+          push: "true"
+          cache-scope: monolith-release
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.title=homelab-mcp
+            org.opencontainers.image.description=Homelab MCP monolith server (mcpo HTTP bridge over stdio MCP)

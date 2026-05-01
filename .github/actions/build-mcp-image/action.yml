@@ -1,0 +1,54 @@
+name: Build MCP image
+description: Build the homelab-mcp monolith image and (optionally) push it to one or more registries.
+inputs:
+  context:
+    description: Build context directory
+    required: false
+    default: mcp
+  dockerfile:
+    description: Path to Dockerfile (relative to repo root)
+    required: false
+    default: mcp/Dockerfile
+  tags:
+    description: Newline-separated list of fully-qualified image tags to build/push
+    required: true
+  push:
+    description: Whether to push the image after build (true/false)
+    required: false
+    default: "false"
+  platforms:
+    description: Target platforms
+    required: false
+    default: linux/amd64
+  labels:
+    description: OCI labels (newline-separated key=value)
+    required: false
+    default: ""
+  cache-scope:
+    description: GitHub Actions cache scope key (must be unique per workflow to avoid races)
+    required: false
+    default: mcp-monolith
+outputs:
+  digest:
+    description: Image digest of the built/pushed image
+    value: ${{ steps.build.outputs.digest }}
+runs:
+  using: composite
+  steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    - name: Set up Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Build and push
+      id: build
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        tags: ${{ inputs.tags }}
+        push: ${{ inputs.push }}
+        labels: ${{ inputs.labels }}
+        provenance: false
+        cache-from: type=gha,scope=${{ inputs.cache-scope }}
+        cache-to: type=gha,scope=${{ inputs.cache-scope }},mode=max
