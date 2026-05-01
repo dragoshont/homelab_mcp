@@ -1,0 +1,177 @@
+{
+  "workflow": "homelab-mcp-migration-plan",
+  "step": 4,
+  "scope": "spec.md + design.md + contract.md",
+  "rules_applied": ["AS-001", "AS-002", "AS-003", "AS-004", "AS-005", "AS-006", "AS-007", "AS-008", "SEA-001", "SEA-002", "SEA-003", "SEA-004", "SEA-005", "SEA-006"],
+  "summary": {
+    "total": 14,
+    "critical": 0,
+    "high": 4,
+    "medium": 7,
+    "low": 3,
+    "open_high": 0,
+    "open_medium": 2
+  },
+  "findings": [
+    {
+      "id": "AS-1",
+      "rule": "AS-002",
+      "severity": "high",
+      "title": "Plan trusts WRITE_TOOLS as the sole source of mutation classification",
+      "description": "Both contract.md MUST-FAIL #2 and design.md §6 G2 enforce 'no write-tool on a readonly server' by reference to mcp/src/homelab_mcp/policy.py:WRITE_TOOLS. If a tool in the source monolith mutates state but is missing from WRITE_TOOLS, this plan will assign it to a readonly server and the gate will green. The plan cannot detect mis-classification because it never reads tool bodies.",
+      "evidence": "contract.md MUST-FAIL #2; design.md §6 G2; spec.md NF1; spec.md C2 freezes the snapshot but not the classification logic.",
+      "disposition": "ACCEPT — but call out explicitly. Phase 1 SDD MUST add an AST scan over each tool body for subprocess/write/POST/DELETE call patterns and surface candidates. Adding tools to WRITE_TOOLS is out of scope for this plan but in scope for Phase 1.",
+      "action": "Add §11 open question Q4 to design.md: 'Phase 1 SDD adds a heuristic mutation-detection scan and reports candidates; tools that fail are added to WRITE_TOOLS in source repo before being placed.'",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-2",
+      "rule": "AS-003",
+      "severity": "high",
+      "title": "G4 (side-by-side parity) is qualitative for the highest-risk server",
+      "description": "design.md §6 explicitly says: 'For control server, gate G4 is qualitative and run in dry-run mode only.' The control server is the only server that can mutate cluster/home state. Granting it the weakest verification gate is a SEA-002 inversion — the most-trusted artifact gets the least adversarial scrutiny.",
+      "evidence": "design.md §6 row G4.",
+      "disposition": "PARTIAL ACCEPT. G4-control cannot run live mutations (idempotency / non-determinism). But the plan can require: (a) record/replay against a recorded mutation transcript, (b) byte-for-byte equality of the request the tool would issue (kube ApplyConfiguration, unifi REST body, dirigera command). This is achievable without firing the mutation.",
+      "action": "Strengthen design.md §6 G4 row: control server's G4 is 'request-shape parity' — capture the rendered request payload from monolith and split, assert equality. Update before Step 5.",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-3",
+      "rule": "SEA-003",
+      "severity": "high",
+      "title": "Decommission gate is unenforceable",
+      "description": "design.md Phase 5 says monolith is removed 'only after all 5 servers have passed their gates AND OpenWebUI no longer references the monolith URL'. There is no asserted artifact ('all gates green') and no automated check ('OpenWebUI no longer references X'). A future operator (or future LLM) could argue a phase passed when it didn't.",
+      "evidence": "design.md §7 Phase 5; spec.md R7.",
+      "disposition": "ACCEPT. Add a checklist that phase SDDs append-only update at a known path (e.g., docs/migration/phase-status.json), and a Phase 5 entry-criterion script that fails unless all 5 entries are present and timestamped. Add a Phase 5 grep over OpenWebUI's MCP config asserting absence of monolith URL.",
+      "action": "Add to design.md §7: 'Phase status tracker: docs/migration/phase-status.json — append-only file listing {phase, server, gate, passed_utc, evidence_path}. Phase 5 entry-criterion is `len(passed_phases) == 5 AND len(set(passed_phases.servers)) == 5`.'",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-4",
+      "rule": "AS-004",
+      "severity": "high",
+      "title": "Bearer-token rotation is unspecified",
+      "description": "design.md §5 says control server uses 'additional bearer token in header (verified at app layer; rotates)'. No mechanism for issuance, storage, or rotation cadence. 'Rotates' without a process is rubber-stamp.",
+      "evidence": "design.md §5 control-server row, 'Auth' cell.",
+      "disposition": "ACCEPT but defer to Phase 4. Phase 0 (this PR) cannot specify the rotation mechanism without locking the operator into one secret store. Replace 'rotates' with 'rotation policy declared in Phase 4 SDD; static token acceptable for v1 with documented rotation runbook'.",
+      "action": "Soften design.md §5 control-row Auth cell: 'bearer token from a K8s Secret, rotation policy specified in Phase 4 SDD'. Remove unsupported 'rotates' claim.",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-5",
+      "rule": "AS-005",
+      "severity": "medium",
+      "title": "Inventory uniqueness check is by sum, not by membership",
+      "description": "contract.md MUST-PASS #1 says counts must equal 133/29; MUST-PASS #2 says sum of per-server counts equals 133. Neither asserts that the set of tool names assigned to servers equals the set of tool names in source — only that cardinality matches. A test could pass with one tool duplicated and another missing as long as the count is right.",
+      "evidence": "contract.md MUST-PASS #1, #2.",
+      "disposition": "ACCEPT. Strengthen the contract: 'set equality, not just count equality'. The generation script in design.md §9 already produces a per-tool record; the gate just needs to compare sets, not sums.",
+      "action": "Update contract.md MUST-PASS #2: 'set(per_server_tools) == set(source_tools); intersection of any two server sets is empty'.",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-6",
+      "rule": "AS-005",
+      "severity": "medium",
+      "title": "Tool-name collision during overlap window assumed-mitigated by OpenWebUI",
+      "description": "design.md §8 RK-3 mitigation: 'OpenWebUI deduplicates by name'. This is asserted, not verified. If OpenWebUI does NOT deduplicate (or deduplicates non-deterministically), the model sees two tools with the same name and one of the two endpoints answers — possibly the wrong one.",
+      "evidence": "design.md §8 RK-3 row.",
+      "disposition": "ACCEPT. Phase 1 SDD's first task: empirically verify OpenWebUI's behavior with two MCP endpoints exposing the same tool name. If dedup is not deterministic, the cutover checklist must remove the monolith's coverage of a tool BEFORE the split server's endpoint is registered.",
+      "action": "Add to design.md §7 Phase 1 row: 'Phase 1 first deliverable: test OpenWebUI's tool-name overlap behavior; cutover order depends on result.'",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-7",
+      "rule": "AS-006",
+      "severity": "medium",
+      "title": "Audit-log fragmentation across 5 servers not addressed",
+      "description": "design.md §10 says 'audit logger lifted into homelab-mcp-core unchanged.' Five servers each running their own copy of the same logger means five separate audit files (or, worse, five processes writing to the same file racily). The monolith today writes one audit log; the split fragments it.",
+      "evidence": "design.md §10; current audit code in mcp/src/homelab_mcp/audit.py writes to a single path.",
+      "disposition": "ACCEPT. Phase 1 SDD chooses: (a) per-server audit file with a documented aggregator, OR (b) shared sink (syslog / a file per Pod with hostname suffix). 'Same file from multiple Pods' is rejected outright.",
+      "action": "Add design.md §11 open question Q5: 'Audit sink topology — per-server file vs shared sink. Decided in Phase 1.'",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-8",
+      "rule": "SEA-002",
+      "severity": "medium",
+      "title": "Plan inhibits adding new tools to monolith but does not enforce it",
+      "description": "design.md §8 RK-5 mitigation: 'Source repo is in maintenance mode for new tools during phases 1–4; new tools land in the split server.' This is a social rule, not a technical one. A future PR to the source repo can add tools without violating any check in this repo.",
+      "evidence": "design.md §8 RK-5.",
+      "disposition": "ACCEPT — limited mitigation possible from this repo. Add a CONTRIBUTING note in source repo (separate PR, post-merge) and a CI check in source repo that warns on new @mcp.tool decorators during the migration window.",
+      "action": "Note in spec.md Out of scope: 'source-repo CI guard is a separate PR after this one merges'.",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-9",
+      "rule": "AS-007",
+      "severity": "medium",
+      "title": "Tests pass for the wrong reason on inventory-only PR",
+      "description": "This PR (Phase 0) has no Python code changes. rivet build / pytest will trivially pass. ADV-007 risk: green CI does not mean the plan is correct, only that the JSON is valid. Step 7 (Build + Test) is essentially a no-op for a docs-only PR.",
+      "evidence": "Phase 0 changes: only docs/migration/* and out/Rivet/sdd/*.",
+      "disposition": "ACCEPT. Replace Step 7 build with a content-validation step: a script that loads tool-inventory.json, asserts schema, asserts sum/set checks against the source repo. Failing this script blocks Step 7.",
+      "action": "Phase 0 Step 7 plan: add tools/validate_inventory.py and run it as the build step. Existing rivet build run is allowed to no-op.",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-10",
+      "rule": "AS-008",
+      "severity": "medium",
+      "title": "Source-commit pin can become a vulnerability window",
+      "description": "spec.md C2 pins the inventory snapshot to commit 0727116c... If a CVE forces a security update on the monolith between pin and Phase 1 start, the plan still references the old commit. There's no provision for re-pinning.",
+      "evidence": "spec.md C2; contract.md MUST-PASS #1 doesn't allow re-pinning.",
+      "disposition": "ACCEPT. Allow re-pinning via a phase-SDD step: any phase MAY re-snapshot, MUST diff old vs new, MUST list any new/removed tools, MUST update tool-inventory.json. Set-equality enforcement still holds against the new snapshot.",
+      "action": "Update spec.md C2 + design.md §9: 'Re-pinning is permitted at the start of any phase SDD. Re-pin produces a diff entry in docs/migration/inventory-history.json.'",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-11",
+      "rule": "SEA-005",
+      "severity": "medium",
+      "title": "Phase 3 parallel ship of network + homeauto shares helpers",
+      "description": "design.md §7 Phase 3 ships network and homeauto in parallel. Both depend on homelab-mcp-core. A breaking change to core during Phase 3 affects both. Plan does not pin a frozen core version per phase.",
+      "evidence": "design.md §7 Phase 3.",
+      "disposition": "ACCEPT. Phase 3 SDD pins homelab-mcp-core to a specific version when both servers' images are built. Sequential build order: build network first, lock core version, build homeauto against same lock.",
+      "action": "Add note to design.md §7 Phase 3: 'Both servers built against a single locked homelab-mcp-core version pinned in their pyproject.toml.'",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-12",
+      "rule": "SEA-001",
+      "severity": "low",
+      "title": "Public-repo leak risk relies on grep heuristic",
+      "description": "design.md §8 RK-7 mitigation: 'Phase SDDs include a grep gate over hostnames/IPs/known secret patterns before push.' Grep against a known-pattern list misses unknown patterns (custom hostnames, encoded secrets). Acceptable for low-risk plan PR but called out for awareness.",
+      "evidence": "design.md §8 RK-7.",
+      "disposition": "ACCEPT AS-IS for Phase 0. Phase 1 SDD adds a more thorough scanner (e.g., gitleaks) before pushing any deployment manifests.",
+      "action": "Note in design.md §8 RK-7 mitigation: 'Phase 0 ships only docs and JSON; Phase 1 SDD upgrades the scanner.'",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-13",
+      "rule": "SEA-004",
+      "severity": "low",
+      "title": "Network server with 7 tools may be folded later — escape hatch undocumented",
+      "description": "design.md §2.2 justifies the 7-tool network server. If operations show the small surface is more overhead than value, plan does not document a folding path.",
+      "evidence": "design.md §2.2.",
+      "disposition": "ACCEPT but as note. Add §11 open question Q6: 'Re-evaluate after Phase 3: fold network into platform if operational overhead exceeds value.'",
+      "action": "Add Q6 to design.md §11.",
+      "applied_in_pr": false
+    },
+    {
+      "id": "AS-14",
+      "rule": "AS-001",
+      "severity": "low",
+      "title": "Inventory generation rule does not handle decorator forms beyond @mcp.tool(...) and @mcp.tool",
+      "description": "design.md §9 generation rule covers ast.Call decorator with attr 'tool' and ast.Attribute with attr 'tool'. If the source repo introduces a different decorator form (e.g., @register_tool, @mcp.command), the AST scan silently skips them.",
+      "evidence": "design.md §9 step 1; current grep confirms only the two forms exist today, but plan locks no future-proofing.",
+      "disposition": "ACCEPT — defensive note. Add a strict mode: scan also asserts no AsyncFunctionDef in server.py without a recognised decorator form (anything else is a parse error, not a silent skip).",
+      "action": "Update design.md §9 generation rule step 1: '...AND fail if any top-level function is decorated by an unrecognised name — never silently skip.'",
+      "applied_in_pr": false
+    }
+  ],
+  "open_questions_to_address_before_step_5": [
+    "Resolve AS-1, AS-2, AS-3, AS-4 (the 4 high findings) by editing spec.md/design.md/contract.md before requesting human approval at Step 5. None require code changes; all are spec-text strengthening.",
+    "Confirm with operator: is a static bearer token from a K8s Secret acceptable for control-server v1 (AS-4 disposition)?"
+  ],
+  "verdict": "PROCEED with edits",
+  "rationale": "Zero critical findings. Four high findings are all addressable by spec/design strengthening (no code changes). Seven medium findings are deferred to Phase 1 SDD per their dispositions. Three low findings are notes. The plan structure is sound; the gaps are in enforcement specificity, not in architectural choice."
+}
