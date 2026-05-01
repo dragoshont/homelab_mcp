@@ -29,6 +29,8 @@ def _isolate_env(monkeypatch):
         "HOMELAB_SSH_USER",
         "HOMELAB_INGRESS_DOMAIN",
         "HOMELAB_INGRESS_IP",
+        "HOMELAB_MCP_AUDIT_LOG",
+        "HOMELAB_MCP_READONLY",
         "CF_ALLOWED_ZONES",
         "CF_DEFAULT_ZONE",
         "TEST_VAR",
@@ -198,6 +200,54 @@ def test_cf_default_zone_explicit_in_allowed_works(monkeypatch):
     monkeypatch.setenv("CF_ALLOWED_ZONES", "internal.example, prod.example")
     monkeypatch.setenv("CF_DEFAULT_ZONE", "prod.example")
     assert cf_default_zone() == "prod.example"
+
+
+def test_cf_default_zone_explicit_with_empty_allowed_raises(monkeypatch):
+    """Adversarial finding ADV-008 critical: CF_DEFAULT_ZONE set but
+    CF_ALLOWED_ZONES unset or empty must NOT silently bypass the allowlist.
+    Empty allowlist means 'refuse all zones'; an explicit default cannot
+    create a single-zone bypass.
+    """
+    monkeypatch.setenv("CF_DEFAULT_ZONE", "prod.example")
+    monkeypatch.delenv("CF_ALLOWED_ZONES", raising=False)
+    with pytest.raises(ConfigurationError) as exc:
+        cf_default_zone()
+    assert "not in CF_ALLOWED_ZONES" in str(exc.value)
+
+
+def test_cf_default_zone_explicit_with_empty_string_allowed_raises(monkeypatch):
+    """Same as above but with CF_ALLOWED_ZONES='' explicitly."""
+    monkeypatch.setenv("CF_DEFAULT_ZONE", "prod.example")
+    monkeypatch.setenv("CF_ALLOWED_ZONES", "")
+    with pytest.raises(ConfigurationError):
+        cf_default_zone()
+
+
+def test_audit_log_path_empty_env_falls_back_to_default(monkeypatch):
+    """Adversarial finding ADV-004 high: HOMELAB_MCP_AUDIT_LOG='' should
+    fall back to the default ~/homelab-mcp/audit.log, not Path('').
+    """
+    from homelab_mcp.settings import audit_log_path
+    monkeypatch.setenv("HOMELAB_MCP_AUDIT_LOG", "")
+    p = audit_log_path()
+    assert str(p) != ""
+    assert str(p) != "."
+    assert "homelab-mcp" in str(p) or "audit" in str(p).lower()
+
+
+def test_audit_log_path_whitespace_only_env_falls_back(monkeypatch):
+    from homelab_mcp.settings import audit_log_path
+    monkeypatch.setenv("HOMELAB_MCP_AUDIT_LOG", "   ")
+    p = audit_log_path()
+    assert str(p).strip() not in ("", ".")
+    assert "homelab-mcp" in str(p) or "audit" in str(p).lower()
+
+
+def test_audit_log_path_explicit_value_honored(monkeypatch, tmp_path):
+    from homelab_mcp.settings import audit_log_path
+    target = tmp_path / "custom-audit.log"
+    monkeypatch.setenv("HOMELAB_MCP_AUDIT_LOG", str(target))
+    assert audit_log_path() == target
 
 
 def test_env_flag_strips_whitespace(monkeypatch):

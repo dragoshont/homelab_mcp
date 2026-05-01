@@ -1,7 +1,7 @@
 {
   "source_repo": "dragoshont/homelab",
-  "source_commit": "3088e67dae3445ce4a76af630732cc2da7daebfa",
-  "captured_utc": "2026-05-01T15:05:18.957213+00:00",
+  "source_commit": "71129a278e69632c4b43e1ffdf0d9d17581b1022",
+  "captured_utc": "2026-05-01T15:19:59.395546+00:00",
   "decision_history_preservation": "fresh-history-no-filter-repo",
   "files": [
     {
@@ -56,8 +56,8 @@
     },
     {
       "path": "mcp/src/homelab_mcp/settings.py",
-      "sha256": "6d9c8c51cfbd27b701597a1b7deebf5398cca8f110347d64b32f2af021bfa7e5",
-      "bytes": 7903
+      "sha256": "beb58bf1fe03e7ab72578802bb1cc9a9773b52326ff188f63c131ed2d76faa8a",
+      "bytes": 8564
     },
     {
       "path": "mcp/tests/conftest.py",
@@ -86,8 +86,8 @@
     },
     {
       "path": "mcp/tests/test_settings_env_contract.py",
-      "sha256": "739b7ee5a4729dae39238aa10a5eb60efd0bdf6ebe9fc1f6c6be1ed85d4d554a",
-      "bytes": 8156
+      "sha256": "53c6635c49f35a178043e9ecef8186cf0a6912ba7f7a3421ee7853757acf484e",
+      "bytes": 10167
     }
   ]
 }

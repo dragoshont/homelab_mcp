@@ -61,6 +61,19 @@ def shannon(s: str) -> float:
     return -sum(p * log2(p) for p in probs)
 
 
+def _line_col_to_abs(content: str, line: int, col: int) -> int:
+    """Convert a 1-based (line, col) tuple from tokenize to a 0-based absolute offset."""
+    abs_pos = 0
+    current_line = 1
+    while current_line < line and abs_pos < len(content):
+        nl = content.find("\n", abs_pos)
+        if nl == -1:
+            return abs_pos
+        abs_pos = nl + 1
+        current_line += 1
+    return abs_pos + col
+
+
 def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -127,16 +140,36 @@ def leak_scan_file(path: Path, content: bytes) -> list[dict]:
     # (e.g., asserting that "10.0.0.5" is recognised as valid).
     is_test_file = "tests" in path.parts or path.name.startswith("test_")
     if not is_test_file:
+        # For .py files, use Python's tokenize module to map each match to
+        # an exact token type. A '#' in a string literal must NOT be treated
+        # as the start of a comment.
+        comment_ranges: list[tuple[int, int]] = []
+        if path.suffix.lower() == ".py":
+            try:
+                import io
+                import tokenize
+                tokens = list(tokenize.tokenize(io.BytesIO(content).readline))
+                for tok in tokens:
+                    if tok.type == tokenize.COMMENT:
+                        sl, sc = tok.start
+                        el, ec = tok.end
+                        # Convert to absolute byte/char offsets
+                        start = _line_col_to_abs(text, sl, sc)
+                        end = _line_col_to_abs(text, el, ec)
+                        comment_ranges.append((start, end))
+            except (tokenize.TokenizeError, IndentationError):
+                # If the file fails to tokenize, fall back to permissive scan.
+                pass
+
         for m in RFC1918.finditer(text):
+            in_python_comment = any(s <= m.start() < e for s, e in comment_ranges)
             line_start = text.rfind("\n", 0, m.start()) + 1
             line_end = text.find("\n", m.start())
             line = text[line_start:line_end if line_end != -1 else len(text)]
-            offset_in_line = m.start() - line_start
-            # Detect # before the match, ignoring # inside string literals
-            # (heuristic: if there's a # character to the LEFT of the match,
-            # treat as comment).
-            pre = line[:offset_in_line]
-            is_comment = "#" in pre or line.lstrip().startswith(("#", "//", "/*", "*"))
+            # Non-Python files (yaml/md/etc.): heuristic line-prefix check.
+            stripped = line.lstrip()
+            line_prefix_comment = stripped.startswith(("#", "//", "/*", "*"))
+            is_comment = in_python_comment or (path.suffix.lower() != ".py" and line_prefix_comment)
             is_example = "example" in line.lower() or "e.g." in line.lower()
             if not is_comment and not is_example:
                 findings.append({
@@ -216,10 +249,14 @@ def main() -> int:
     files = enumerate_source_files(source)
     print(f"   files to lift: {len(files)}")
 
-    # 2.2 + 2.3: read source bytes, hash, copy with binary IO.
+    # 2.2: read source bytes, hash, leak-scan IN MEMORY before any writes.
+    # This addresses ADV-003 high: the previous version interleaved write +
+    # scan, so a blocking finding could leave the destination with
+    # partially-copied secret-bearing files. Now: scan ALL files first,
+    # abort if any blocking finding, only then perform the binary copies.
     manifest_files: list[dict] = []
     leak_findings: list[dict] = []
-    written = 0
+    file_bytes: dict[str, bytes] = {}
 
     for rel in files:
         src_path = source / rel
@@ -230,48 +267,13 @@ def main() -> int:
         data = src_path.read_bytes()
         digest = sha256_bytes(data)
         manifest_files.append({"path": rel, "sha256": digest, "bytes": len(data)})
-        # Leak-scan in memory before any disk write.
         leak_findings.extend(leak_scan_file(Path(rel), data))
-
-        if not dry_run:
-            dest_path = dest / rel
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            # Binary write (AS-3 mitigation).
-            dest_path.write_bytes(data)
-            # Re-read and verify.
-            check = sha256_bytes(dest_path.read_bytes())
-            if check != digest:
-                print(f"FAIL: hash mismatch on {rel}: src={digest} dst={check}", file=sys.stderr)
-                return 2
-            written += 1
+        file_bytes[rel] = data
 
     print(f"   manifest entries: {len(manifest_files)}")
     print(f"   leak-scan findings: {len(leak_findings)}")
-    print(f"   files written: {written if not dry_run else 0}")
 
-    # Stale destination check: any *.py / Dockerfile / pyproject.toml under
-    # dest/mcp/ that is NOT in the source manifest is stale (source removed
-    # it but the previous lift left it behind). The lift script does NOT
-    # delete autonomously — it surfaces them so the operator can decide.
-    expected_paths = {(dest / f["path"]).resolve() for f in manifest_files}
-    expected_paths.add((dest / "mcp" / ".lift-manifest.json").resolve())
-    if (dest / "mcp").exists():
-        stale: list[Path] = []
-        for p in (dest / "mcp").rglob("*"):
-            if not p.is_file():
-                continue
-            # Skip __pycache__ / .pytest_cache / generated artifacts.
-            if any(part in {"__pycache__", ".pytest_cache"} for part in p.parts):
-                continue
-            if p.resolve() not in expected_paths:
-                stale.append(p)
-        if stale:
-            print(f"   WARNING: {len(stale)} stale destination file(s) not in source manifest:")
-            for p in stale[:10]:
-                print(f"      {p.relative_to(dest)}")
-            print("   These were not touched by this lift. Investigate and remove manually if appropriate.")
-
-    # 3: AS-1 hard commit-gate
+    # 3: AS-1 hard commit-gate — evaluated BEFORE any destination writes.
     blocking = [f for f in leak_findings if f["severity"] in BLOCK_SEVERITIES]
     sdd_dir = dest / "out" / "Rivet" / "sdd" / "phase-0.5-source-lift"
     leak_path = sdd_dir / "leak-scan.json"
@@ -298,10 +300,60 @@ def main() -> int:
         print(f"   leak scan (dry-run, not written): {leak_path}")
 
     if blocking:
-        print(f"FAIL: {len(blocking)} blocking finding(s). See {leak_path}.", file=sys.stderr)
+        print(
+            f"FAIL: {len(blocking)} blocking finding(s). Refusing to copy any "
+            f"files. See {leak_path}.",
+            file=sys.stderr,
+        )
         for f in blocking[:10]:
             print(f"  {f['severity']:25s}  {f['path']}:{f['line']}  {f['kind']}  {f.get('match', '')}", file=sys.stderr)
         return 3
+
+    # 2.3: now safe to copy. No blocking findings, so destination cannot end
+    # up with secret-bearing files even if the copy itself fails partway.
+    written = 0
+    if not dry_run:
+        for rel, data in file_bytes.items():
+            dest_path = dest / rel
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            # Binary write (AS-3 mitigation).
+            dest_path.write_bytes(data)
+            # Re-read and verify.
+            check = sha256_bytes(dest_path.read_bytes())
+            expected_digest = next(
+                m["sha256"] for m in manifest_files if m["path"] == rel
+            )
+            if check != expected_digest:
+                print(
+                    f"FAIL: hash mismatch on {rel}: src={expected_digest} dst={check}",
+                    file=sys.stderr,
+                )
+                return 2
+            written += 1
+
+    print(f"   files written: {written if not dry_run else 0}")
+
+    # Stale destination check: any *.py / Dockerfile / pyproject.toml under
+    # dest/mcp/ that is NOT in the source manifest is stale (source removed
+    # it but the previous lift left it behind). The lift script does NOT
+    # delete autonomously — it surfaces them so the operator can decide.
+    expected_paths = {(dest / f["path"]).resolve() for f in manifest_files}
+    expected_paths.add((dest / "mcp" / ".lift-manifest.json").resolve())
+    if (dest / "mcp").exists():
+        stale: list[Path] = []
+        for p in (dest / "mcp").rglob("*"):
+            if not p.is_file():
+                continue
+            # Skip __pycache__ / .pytest_cache / generated artifacts.
+            if any(part in {"__pycache__", ".pytest_cache"} for part in p.parts):
+                continue
+            if p.resolve() not in expected_paths:
+                stale.append(p)
+        if stale:
+            print(f"   WARNING: {len(stale)} stale destination file(s) not in source manifest:")
+            for p in stale[:10]:
+                print(f"      {p.relative_to(dest)}")
+            print("   These were not touched by this lift. Investigate and remove manually if appropriate.")
 
     # 2.4 manifest.
     manifest = {

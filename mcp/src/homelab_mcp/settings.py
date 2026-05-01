@@ -66,11 +66,16 @@ def env_flag(name: str, default: bool = False) -> bool:
 
 
 def audit_log_path() -> Path:
-    """Return the configured MCP audit log path."""
-    return Path(os.environ.get(
-        "HOMELAB_MCP_AUDIT_LOG",
-        os.path.expanduser("~/homelab-mcp/audit.log"),
-    ))
+    """Return the configured MCP audit log path.
+
+    Empty-string env (e.g. HOMELAB_MCP_AUDIT_LOG="") falls back to the default
+    rather than producing Path("") which resolves to the current directory and
+    then fails with IsADirectoryError when opened as a file.
+    """
+    raw = os.environ.get("HOMELAB_MCP_AUDIT_LOG", "").strip()
+    if not raw:
+        raw = os.path.expanduser("~/homelab-mcp/audit.log")
+    return Path(raw)
 
 
 def require_env(name: str, hint: str = "") -> str:
@@ -189,10 +194,16 @@ def cf_default_zone() -> str:
             raise ConfigurationError(
                 f"CF_DEFAULT_ZONE={explicit!r} is not a valid domain"
             )
-        if allowed and explicit not in allowed:
+        # Membership check MUST run regardless of whether `allowed` is empty.
+        # An empty allowlist with an explicit default would otherwise create
+        # a silent bypass: the operator's intent in setting CF_ALLOWED_ZONES
+        # to empty ("refuse all zones") is contradicted by returning a
+        # CF_DEFAULT_ZONE that no zone-validation step would accept.
+        if explicit not in allowed:
             raise ConfigurationError(
                 f"CF_DEFAULT_ZONE={explicit!r} is not in CF_ALLOWED_ZONES "
-                f"({sorted(allowed)}); the default cannot bypass the allowlist"
+                f"({sorted(allowed) if allowed else 'empty'}); the default "
+                f"cannot bypass the allowlist"
             )
         return explicit
     if not allowed:
