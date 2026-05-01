@@ -1,0 +1,26 @@
+[project]
+name = "homelab-mcp"
+version = "0.1.0"
+description = "All-in-one MCP server for homelab services"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+    "dirigera>=1.2.7",
+    "pyatv>=0.16.0",
+    "aiounifi>=83",
+]
+
+[project.scripts]
+homelab-mcp = "homelab_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/homelab_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

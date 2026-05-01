@@ -1,0 +1,477 @@
+{
+  "modelsUsed": [
+    "claude-opus-4.6",
+    "gpt-5.3-codex"
+  ],
+  "durationSeconds": 422.5458591,
+  "highConfidenceCount": 0,
+  "deterministicFindingCount": 0,
+  "totalFindings": 20,
+  "findings": [
+    {
+      "rule": "BUG-001",
+      "severity": "High",
+      "file": "",
+      "scenario": "Long-running MCP server process accumulates leaked httpx.Client connection pools",
+      "expected": "Each client class (ServarrClient, QbtClient, Mylar3Client, PlexClient, HomebridgeClient) implements close() or context-manager protocol so connection pools and file descriptors are reclaimed",
+      "actual": "httpx.Client instances are created in __init__ but none of the five classes implement close(), __del__, __enter__/__exit__. In the long-lived mcpo process, every instantiation leaks a connection pool and its underlying sockets",
+      "testClass": "TestClientResourceManagement",
+      "testMethod": "test_servarr_client_closes_httpx_client",
+      "testBody": "def test_servarr_client_closes_httpx_client():\n    from homelab_mcp.clients import ServarrClient, ServiceConfig\n    c = ServarrClient(ServiceConfig(url=\u0027http://localhost\u0027, api_key=\u0027k\u0027))\n    assert hasattr(c, \u0027close\u0027) or hasattr(c, \u0027__exit__\u0027), \u0027ServarrClient must be closable\u0027\n    # same check for QbtClient, Mylar3Client, PlexClient, HomebridgeClient",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "High",
+      "file": "",
+      "scenario": "Homebridge login response lacks \u0027access_token\u0027 key (API version mismatch, error body, etc.)",
+      "expected": "HomebridgeClient._login raises or retries with a clear error when token is missing from response",
+      "actual": "_token is set to None via dict.get(\u0027access_token\u0027). Subsequent requests send literal header \u0027Authorization: Bearer None\u0027 (Python str(None)=\u0027None\u0027). Server returns 401, one blind retry occurs, then opaque HTTPStatusError is raised hiding the real cause",
+      "testClass": "TestHomebridgeClient",
+      "testMethod": "test_login_without_access_token_raises",
+      "testBody": "def test_login_without_access_token_raises(httpx_mock):\n    from homelab_mcp.clients import HomebridgeClient, ServiceConfig\n    cfg = ServiceConfig(url=\u0027http://hb\u0027, username=\u0027u\u0027, password=\u0027p\u0027)\n    httpx_mock.add_response(url=\u0027http://hb/api/auth/login\u0027, json={\u0027unexpected\u0027: \u0027body\u0027})\n    client = HomebridgeClient(cfg)\n    client._login()\n    # BUG: _token is now None, next request sends \u0027Bearer None\u0027\n    assert client._token is not None, \u0027Token must not be None after successful login\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Audit logger propagates sensitive tool-call params to root/stdout because propagate is never disabled",
+      "expected": "configure_audit_logger sets logger.propagate = False so audit entries (which include raw param dicts that may contain credentials) are written only to the dedicated audit file",
+      "actual": "logger.propagate remains True (default). Every audit() call propagates through the root logger, dumping tool params (potentially containing API keys, passwords, PII) to container stdout/stderr where log aggregators collect them",
+      "testClass": "TestAuditLogger",
+      "testMethod": "test_audit_does_not_propagate_to_root",
+      "testBody": "def test_audit_does_not_propagate_to_root(tmp_path):\n    import logging\n    from homelab_mcp.audit import configure_audit_logger, audit\n    root = logging.getLogger()\n    captured = []\n    h = logging.Handler(); h.emit = lambda r: captured.append(r)\n    root.addHandler(h); root.setLevel(logging.DEBUG)\n    logger = configure_audit_logger(tmp_path / \u0027audit.log\u0027)\n    audit(logger, \u0027test_tool\u0027, {\u0027secret\u0027: \u0027hunter2\u0027})\n    root.removeHandler(h)\n    assert len(captured) == 0, \u0027Audit record propagated to root logger, leaking params\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Mylar3 API returns JSON body with leading whitespace or UTF-8 BOM",
+      "expected": "Mylar3Client.call parses the response as JSON",
+      "actual": "r.text.startswith((\u0027{\u0027, \u0027[\u0027)) is False when the body has leading whitespace/BOM and content-type header omits \u0027json\u0027. The method returns the raw text string, breaking callers that expect a dict/list",
+      "testClass": "TestMylar3Client",
+      "testMethod": "test_call_parses_json_with_leading_whitespace",
+      "testBody": "def test_call_parses_json_with_leading_whitespace(httpx_mock):\n    from homelab_mcp.clients import Mylar3Client, ServiceConfig\n    cfg = ServiceConfig(url=\u0027http://mylar\u0027, api_key=\u0027k\u0027)\n    httpx_mock.add_response(\n        url__regex=r\u0027.*\u0027,\n        text=\u0027  {\u0022success\u0022: true, \u0022data\u0022: []}\u0027,\n        headers={\u0027content-type\u0027: \u0027text/html\u0027},  # Mylar3 sometimes misreports\n    )\n    client = Mylar3Client(cfg)\n    result = client.call(\u0027getIndex\u0027)\n    assert isinstance(result, dict), f\u0027Expected dict, got {type(result).__name__}: {result!r}\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "BUG-003",
+      "severity": "Critical",
+      "file": "",
+      "scenario": "apple_now_playing with pyatv 0.14\u002B where \u0060metadata.playing\u0060 is an async method",
+      "expected": "The coroutine \u0060atv.metadata.playing()\u0060 is awaited, returning a Playing object with title/artist/album",
+      "actual": "\u0060hasattr(atv.metadata, \u0027playing\u0027)\u0060 is always True (it\u0027s a method), so \u0060p = atv.metadata.playing\u0060 assigns the bound method object. \u0060hasattr(p, \u0027__await__\u0027)\u0060 is False for a bound method (only True for coroutines), so \u0060p\u0060 is never awaited. All \u0060getattr(p, \u0027title\u0027, None)\u0060 etc. return None.",
+      "testClass": "TestAppleNowPlaying",
+      "testMethod": "test_now_playing_returns_actual_metadata",
+      "testBody": "def test_now_playing_returns_actual_metadata(monkeypatch):\n    \u0022\u0022\u0022p = atv.metadata.playing gets the method, not the result.\n    atv.metadata.playing() returns a coroutine \u2192 must be awaited.\u0022\u0022\u0022\n    from unittest.mock import AsyncMock, MagicMock\n    playing_obj = MagicMock(title=\u0027Song\u0027, artist=\u0027Artist\u0027, album=\u0027Album\u0027,\n                            device_state=\u0027playing\u0027, media_type=\u0027music\u0027,\n                            position=10, total_time=200)\n    metadata = MagicMock()\n    metadata.playing = AsyncMock(return_value=playing_obj)\n    # hasattr(metadata, \u0027playing\u0027) is True, so code does p = metadata.playing\n    # which is the AsyncMock itself (callable), not playing_obj\n    p = metadata.playing if hasattr(metadata, \u0027playing\u0027) else None\n    assert getattr(p, \u0027title\u0027, None) is None  # BUG: returns None, not \u0027Song\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-003",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Write tools (sonarr_search_missing, qbt_pause, plex_scan_library, dirigera_set_light, etc.) call _audit() before _check_readonly(), writing a false \u0027ok\u0027 audit entry for rejected operations",
+      "expected": "_check_readonly() is called first (as done correctly in kube_restart/flux_reconcile), and _audit() records the outcome only if the readonly gate passes",
+      "actual": "_audit(\u0027sonarr_search_missing\u0027, {}) writes result_summary=\u0027ok\u0027 to the audit log, then _check_readonly raises. The audit log now contains a misleading \u0027ok\u0027 entry for a rejected mutating call. At least 20 tools follow this reversed pattern (all *_search_missing, qbt_pause/resume, plex_scan_library, plex_maintenance, all dirigera_set_*, all apple_*, all unifi write tools, kube_image_can_pull).",
+      "testClass": "TestReadonlyAudit",
+      "testMethod": "test_readonly_does_not_produce_ok_audit_entry",
+      "testBody": "def test_readonly_does_not_produce_ok_audit_entry(monkeypatch):\n    import homelab_mcp.server as srv\n    monkeypatch.setattr(srv, \u0027_READONLY\u0027, True)\n    audit_calls = []\n    monkeypatch.setattr(srv, \u0027_audit\u0027, lambda t, p, r=\u0027ok\u0027: audit_calls.append((t, r)))\n    monkeypatch.setattr(srv, \u0027_sonarr\u0027, lambda: MagicMock())\n    import pytest\n    with pytest.raises(RuntimeError):\n        srv.sonarr_search_missing()\n    ok_entries = [c for c in audit_calls if c[1] == \u0027ok\u0027]\n    assert ok_entries == [], f\u0027False ok audit entries written before readonly rejection: {ok_entries}\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "BUG-004",
+      "severity": "High",
+      "file": "",
+      "scenario": "dirigera_trigger_scene finds a scene by id when scene.info is None, then crashes accessing target.info.name in the return statement",
+      "expected": "Safe attribute access (getattr) like the search clause uses",
+      "actual": "Search uses \u0060getattr(s.info, \u0027name\u0027, None)\u0060 defensively, but the return statement uses bare \u0060target.info.name\u0060 which raises AttributeError if \u0060info\u0060 is None. A scene matched by \u0060s.id == name_or_id\u0060 with \u0060s.info is None\u0060 triggers the crash after the scene has already been triggered.",
+      "testClass": "TestDirigeraTriggerScene",
+      "testMethod": "test_trigger_scene_by_id_when_info_is_none",
+      "testBody": "def test_trigger_scene_by_id_when_info_is_none():\n    from unittest.mock import MagicMock\n    scene = MagicMock()\n    scene.id = \u0027abc-123\u0027\n    scene.info = None  # some scenes may lack info\n    # Search line uses getattr(s.info, \u0027name\u0027, None) \u2192 works\n    assert getattr(getattr(scene, \u0027info\u0027, None), \u0027name\u0027, None) is None\n    # Return line uses target.info.name \u2192 crashes\n    import pytest\n    with pytest.raises(AttributeError):\n        _ = scene.info.name  # AttributeError: \u0027NoneType\u0027 has no attribute \u0027name\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-006",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "host_journal validates systemd unit name with _validate_k8s_name, which rejects uppercase, \u0027@\u0027, and underscores \u2014 all valid in systemd unit names",
+      "expected": "host_journal(\u0027NetworkManager\u0027) or host_journal(\u0027user@1000.service\u0027) should succeed",
+      "actual": "_validate_k8s_name raises ValueError because _K8S_NAME_RE (^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$) rejects uppercase letters and \u0027@\u0027. Common units like NetworkManager, snapd.apparmor, getty@tty1 are all rejected.",
+      "testClass": "TestHostJournal",
+      "testMethod": "test_host_journal_accepts_uppercase_systemd_units",
+      "testBody": "def test_host_journal_accepts_uppercase_systemd_units():\n    import homelab_mcp.server as srv\n    import pytest\n    # These are valid systemd unit names but rejected by _validate_k8s_name\n    with pytest.raises(ValueError):\n        srv._validate_k8s_name(\u0027NetworkManager\u0027, \u0027unit\u0027)\n    with pytest.raises(ValueError):\n        srv._validate_k8s_name(\u0027user@1000.service\u0027, \u0027unit\u0027)\n    # host_journal is broken for these units",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "BUG-005",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Lazy client init in _sonarr()/_radarr()/etc. uses check-then-write on module-level _clients dict without synchronization, and MCP servers may dispatch concurrent tool calls",
+      "expected": "Each service gets exactly one client instance, even under concurrent tool calls",
+      "actual": "Two concurrent calls to e.g. sonarr_health() can both pass \u0060\u0027sonarr\u0027 not in _clients\u0060, both construct a ServarrClient, and one overwrites the other. If ServarrClient holds a session/auth state, the orphaned instance leaks or causes auth confusion. The pattern repeats for all 9 lazy-init helpers.",
+      "testClass": "TestClientInit",
+      "testMethod": "test_concurrent_sonarr_init_creates_single_client",
+      "testBody": "def test_concurrent_sonarr_init_creates_single_client():\n    \u0022\u0022\u0022Demonstrates the race window: two threads both see \u0027sonarr\u0027 not in _clients.\u0022\u0022\u0022\n    import threading, homelab_mcp.server as srv\n    srv._clients.clear()\n    created = []\n    original_init = srv.ServarrClient.__init__\n    def tracking_init(self, *a, **kw):\n        created.append(self)\n        original_init(self, *a, **kw)\n    # With monkeypatching \u002B threading barrier, two threads can both\n    # enter the \u0027if not in _clients\u0027 branch simultaneously.",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-007",
+      "severity": "Critical",
+      "file": "",
+      "scenario": "The image entrypoint runs \u0060homelab-mcp\u0060, and \u0060pyproject.toml\u0060 maps that script to \u0060homelab_mcp.server:main\u0060, but this diff does not add \u0060src/homelab_mcp/server.py\u0060.",
+      "expected": "Starting the container should import the configured module and run the MCP server.",
+      "actual": "Startup fails with \u0060ModuleNotFoundError: No module named \u0027homelab_mcp.server\u0027\u0060.",
+      "testClass": "EntrypointSmokeTests",
+      "testMethod": "ConsoleScriptTargetModule_Exists",
+      "testBody": "def test_console_script_target_module_exists(): import importlib; importlib.import_module(\u0027homelab_mcp.server\u0027)",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "BUG-001",
+      "severity": "High",
+      "file": "",
+      "scenario": "All client wrappers (\u0060ServarrClient\u0060, \u0060QbtClient\u0060, \u0060Mylar3Client\u0060, \u0060PlexClient\u0060, \u0060HomebridgeClient\u0060) allocate \u0060httpx.Client\u0060 but expose no \u0060close()\u0060/context-manager path.",
+      "expected": "Network clients should be deterministically disposed (explicit close or context manager) to release sockets/file descriptors.",
+      "actual": "Resources remain open until GC, causing connection/socket buildup under repeated client construction.",
+      "testClass": "ClientLifecycleTests",
+      "testMethod": "AllHttpClients_AreClosable",
+      "testBody": "def test_all_http_clients_are_closable(): from homelab_mcp.clients import ServarrClient,QbtClient,Mylar3Client,PlexClient,HomebridgeClient,ServiceConfig; cfg=ServiceConfig(url=\u0027http://x\u0027); assert all(hasattr(c, \u0027close\u0027) for c in [ServarrClient(cfg),QbtClient(cfg),Mylar3Client(cfg),PlexClient(cfg),HomebridgeClient(cfg)])",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Homebridge login returns HTTP 200 but omits/empties \u0060access_token\u0060 (schema drift or partial outage).",
+      "expected": "\u0060_login()\u0060 should validate token presence and raise a clear auth error immediately.",
+      "actual": "\u0060self._token\u0060 becomes \u0060None\u0060/empty and requests are sent with \u0060Authorization: Bearer None\u0060, producing misleading 401 retries.",
+      "testClass": "HomebridgeAuthTests",
+      "testMethod": "LoginWithoutAccessToken_FailsFast",
+      "testBody": "def test_login_without_access_token_fails_fast(monkeypatch): ... # mock /api/auth/login -\u003E 200 {} and assert HomebridgeClient.get raises explicit token-missing error before issuing API GET",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "qBittorrent auth endpoint can return HTTP 200 with body \u0060Fails.\u0060 on bad credentials.",
+      "expected": "\u0060QbtClient._login()\u0060 should verify success body/cookie before setting logged-in state.",
+      "actual": "\u0060_logged_in\u0060 is set \u0060True\u0060 solely on status code, deferring auth failure to later API calls and masking root cause.",
+      "testClass": "QbtAuthTests",
+      "testMethod": "Login200FailsBody_DoesNotMarkLoggedIn",
+      "testBody": "def test_login_200_fails_body_does_not_mark_logged_in(monkeypatch): ... # mock login 200 \u0027Fails.\u0027 and assert _logged_in remains False / raises auth error",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "BUG-003",
+      "severity": "High",
+      "file": "",
+      "scenario": "pyatv exposes \u0060metadata.playing()\u0060 as an async method. In \u0060apple_now_playing\u0060, \u0060p = atv.metadata.playing\u0060 stores the bound method instead of calling it.",
+      "expected": "\u0060apple_now_playing\u0060 should await the playing payload and return real media fields (title/artist/state).",
+      "actual": "\u0060p\u0060 is a method object (not awaited), so returned fields are null/empty even when media is playing.",
+      "testClass": "AppleToolsTests",
+      "testMethod": "AppleNowPlaying_CallsAndAwaitsPlayingMethod",
+      "testBody": "def test_apple_now_playing_calls_and_awaits_playing_method(monkeypatch): ... assert result[\u0027title\u0027] == \u0027Song A\u0027",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-008",
+      "severity": "High",
+      "file": "",
+      "scenario": "\u0060kube_image_can_pull\u0060 creates a pod with \u0060/bin/true\u0060 and waits for \u0060condition=Ready\u0060.",
+      "expected": "Successful image pull should return \u0060can_pull=True\u0060 even if the pod exits quickly with phase \u0060Succeeded\u0060.",
+      "actual": "Short-lived pods often never become Ready before completion, causing false \u0060can_pull=False\u0060 timeouts.",
+      "testClass": "KubeImagePullTests",
+      "testMethod": "KubeImageCanPull_SucceededPodIsTreatedAsSuccess",
+      "testBody": "def test_kube_image_can_pull_succeeded_pod_is_success(...): ... assert result[\u0027can_pull\u0027] is True",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-005",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "First Dirigera init attempt fails transiently (network hiccup). \u0060_dirigera\u0060 caches \u0060_clients[\u0027dirigera\u0027] = None\u0060 inside the exception path.",
+      "expected": "Later calls should retry initialization once connectivity/config is restored.",
+      "actual": "Subsequent calls return cached \u0060None\u0060 immediately and never retry, leaving Dirigera permanently unusable until process restart.",
+      "testClass": "DirigeraInitTests",
+      "testMethod": "DirigeraInit_TransientFailureDoesNotPoisonCache",
+      "testBody": "def test_dirigera_init_transient_failure_does_not_poison_cache(...): ... assert _dirigera() is not None",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-002",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Cloudflare zone has more than 200 DNS records.",
+      "expected": "\u0060cf_dns_list\u0060 should paginate and return all records (or explicitly indicate partial results).",
+      "actual": "Function requests only \u0060per_page=200\u0060 once and silently truncates larger zones.",
+      "testClass": "CloudflareDnsTests",
+      "testMethod": "CfDnsList_PaginatesBeyondFirstPage",
+      "testBody": "def test_cf_dns_list_paginates_beyond_first_page(...): ... assert result[\u0027count\u0027] == 250",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-008",
+      "severity": "Critical",
+      "file": "",
+      "scenario": "Source contains a real credential in a non-.py file (e.g., mcp/scripts/bootstrap.sh or mcp/config/app.json).",
+      "expected": "Leak scan classifies high-entropy credential literals as blocking (\u0060real-secret\u0060) regardless of text file extension, and aborts before any copy.",
+      "actual": "High-entropy secret detection is gated by \u0060if path.suffix.lower() == \u0022.py\u0022\u0060, so credentials in .sh/.yaml/.json are not flagged and can be lifted.",
+      "testClass": "LiftPhase05LeakScanTests",
+      "testMethod": "HighEntropyToken_InShellFile_IsBlocking",
+      "testBody": "def test_high_entropy_token_in_shell_file_is_blocking():\n    from pathlib import Path\n    from tools.lift_phase_0_5 import leak_scan_file\n    content = b\u0027API_TOKEN=\u0022AbCdEfGhIjKlMnOpQrStUvWxYz012345\u0022\\n\u0027\n    findings = leak_scan_file(Path(\u0027mcp/scripts/bootstrap.sh\u0027), content)\n    assert any(f[\u0027kind\u0027] == \u0027high-entropy-token\u0027 and f[\u0027severity\u0027] == \u0027real-secret\u0027 for f in findings)",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-001",
+      "severity": "High",
+      "file": "",
+      "scenario": "Inventory JSON accidentally contains duplicate tool names after a merge.",
+      "expected": "Verifier fails fast on duplicate \u0060inventory[\u0022tools\u0022][*][\u0022name\u0022]\u0060 entries.",
+      "actual": "\u0060expected = {t[\u0027name\u0027] for t in inventory[\u0027tools\u0027]}\u0060 silently de-duplicates collisions, so malformed inventory can still report OK.",
+      "testClass": "VerifyLiftTests",
+      "testMethod": "DuplicateInventoryNames_FailsValidation",
+      "testBody": "def test_duplicate_inventory_names_fails_validation(tmp_path, monkeypatch):\n    import json\n    import tools.verify_lift as v\n    inv = tmp_path / \u0027inv.json\u0027\n    inv.write_text(json.dumps({\u0027tools\u0027: [{\u0027name\u0027: \u0027a\u0027}, {\u0027name\u0027: \u0027a\u0027}]}), encoding=\u0027utf-8\u0027)\n    srv = tmp_path / \u0027server.py\u0027\n    srv.write_text(\u0027pass\u0027, encoding=\u0027utf-8\u0027)\n    monkeypatch.setattr(v, \u0027scan_server_tools\u0027, lambda _p: [\u0027a\u0027])\n    monkeypatch.setattr(\u0027sys.argv\u0027, [\u0027verify_lift.py\u0027, \u0027--lifted-server\u0027, str(srv), \u0027--inventory\u0027, str(inv)])\n    assert v.main() != 0",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-006",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Operator sets \u0060HOMELAB_MCP_AUDIT_LOG=~/homelab-mcp/custom.log\u0060.",
+      "expected": "Configured path is user-expanded to the home directory path.",
+      "actual": "Only the default path is expanded; explicit env values are returned as \u0060Path(\u0027~/...\u0027)\u0060, which can write to the wrong location or fail depending on cwd/filesystem.",
+      "testClass": "SettingsPathTests",
+      "testMethod": "AuditLogPath_ExplicitTilde_IsExpanded",
+      "testBody": "def test_audit_log_path_explicit_tilde_is_expanded(monkeypatch):\n    from pathlib import Path\n    from homelab_mcp.settings import audit_log_path\n    monkeypatch.setenv(\u0027HOMELAB_MCP_AUDIT_LOG\u0027, \u0027~/homelab-mcp/custom.log\u0027)\n    p = audit_log_path()\n    assert str(p).startswith(str(Path.home()))",
+      "sourceModel": "gpt-5.3-codex"
+    }
+  ],
+  "deterministicFindings": [],
+  "providerDiagnostics": {
+    "requestedProvider": "copilot-sdk",
+    "effectiveProvider": "copilot-sdk",
+    "modelResolutionMode": "sdk-defaults",
+    "copilotCliPath": "<redacted-user-path>\\copilot.exe",
+    "copilotCliSource": "winget",
+    "copilotCliVersion": "",
+    "sdkStartupStatus": "started",
+    "sdkStartupError": "",
+    "sdkModelInventoryStatus": "listed",
+    "sdkModelInventoryError": "",
+    "availableSdkModels": [
+      "claude-haiku-4.5",
+      "claude-opus-4.5",
+      "claude-opus-4.6",
+      "claude-opus-4.6-1m",
+      "claude-opus-4.7",
+      "claude-opus-4.7-1m-internal",
+      "claude-opus-4.7-high",
+      "claude-opus-4.7-xhigh",
+      "claude-sonnet-4",
+      "claude-sonnet-4.5",
+      "claude-sonnet-4.6",
+      "gpt-4.1",
+      "gpt-5-mini",
+      "gpt-5.2",
+      "gpt-5.2-codex",
+      "gpt-5.3-codex",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.5"
+    ],
+    "selectedSdkModels": [
+      "claude-opus-4.6",
+      "gpt-5.3-codex"
+    ],
+    "fallbackTriggered": false,
+    "fallbackReason": ""
+  },
+  "agreementMatrix": [
+    {
+      "finding": "Long-running MCP server process accumulates leaked httpx.Client connection pools",
+      "rule": "BUG-001",
+      "severity": "High",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Homebridge login response lacks \u0027access_token\u0027 key (API version mismatch, error body, etc.)",
+      "rule": "ADV-004",
+      "severity": "High",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Audit logger propagates sensitive tool-call params to root/stdout because propagate is never disabled",
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Mylar3 API returns JSON body with leading whitespace or UTF-8 BOM",
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "apple_now_playing with pyatv 0.14\u002B where \u0060metadata.playing\u0060 is an async method",
+      "rule": "BUG-003",
+      "severity": "Critical",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Write tools (sonarr_search_missing, qbt_pause, plex_scan_library, dirigera_set_light, etc.) call _audit() before _check_readonly(), writing a false \u0027ok\u0027 audit entry for rejected operations",
+      "rule": "ADV-003",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "dirigera_trigger_scene finds a scene by id when scene.info is None, then crashes accessing target.info.name in the return statement",
+      "rule": "BUG-004",
+      "severity": "High",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "host_journal validates systemd unit name with _validate_k8s_name, which rejects uppercase, \u0027@\u0027, and underscores \u2014 all valid in systemd unit names",
+      "rule": "ADV-006",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Lazy client init in _sonarr()/_radarr()/etc. uses check-then-write on module-level _clients dict without synchronization, and MCP servers may dispatch concurrent tool calls",
+      "rule": "BUG-005",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "The image entrypoint runs \u0060homelab-mcp\u0060, and \u0060pyproject.toml\u0060 maps that script to \u0060homelab_mcp.server:main\u0060, but this diff does not add \u0060src/homelab_mcp/server.py\u0060.",
+      "rule": "ADV-007",
+      "severity": "Critical",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "All client wrappers (\u0060ServarrClient\u0060, \u0060QbtClient\u0060, \u0060Mylar3Client\u0060, \u0060PlexClient\u0060, \u0060HomebridgeClient\u0060) allocate \u0060httpx.Client\u0060 but expose no \u0060close()\u0060/context-manager path.",
+      "rule": "BUG-001",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Homebridge login returns HTTP 200 but omits/empties \u0060access_token\u0060 (schema drift or partial outage).",
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "qBittorrent auth endpoint can return HTTP 200 with body \u0060Fails.\u0060 on bad credentials.",
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "pyatv exposes \u0060metadata.playing()\u0060 as an async method. In \u0060apple_now_playing\u0060, \u0060p = atv.metadata.playing\u0060 stores the bound method instead of calling it.",
+      "rule": "BUG-003",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "\u0060kube_image_can_pull\u0060 creates a pod with \u0060/bin/true\u0060 and waits for \u0060condition=Ready\u0060.",
+      "rule": "ADV-008",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "First Dirigera init attempt fails transiently (network hiccup). \u0060_dirigera\u0060 caches \u0060_clients[\u0027dirigera\u0027] = None\u0060 inside the exception path.",
+      "rule": "ADV-005",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Cloudflare zone has more than 200 DNS records.",
+      "rule": "ADV-002",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Source contains a real credential in a non-.py file (e.g., mcp/scripts/bootstrap.sh or mcp/config/app.json).",
+      "rule": "ADV-008",
+      "severity": "Critical",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Inventory JSON accidentally contains duplicate tool names after a merge.",
+      "rule": "ADV-001",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Operator sets \u0060HOMELAB_MCP_AUDIT_LOG=~/homelab-mcp/custom.log\u0060.",
+      "rule": "ADV-006",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    }
+  ],
+  "errors": {
+    "claude-opus-4.6": "CopilotSDK(claude-opus-4.6): Empty response from model"
+  }
+}

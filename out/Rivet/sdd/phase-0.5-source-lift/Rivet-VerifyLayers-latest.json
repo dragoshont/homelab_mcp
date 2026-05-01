@@ -1,0 +1,262 @@
+{
+  "timestamp": "2026-05-01T15:36:10.311683+00:00",
+  "layers": {
+    "W": {
+      "layer": "W",
+      "name": "Wiring",
+      "durationSeconds": 0.0120752,
+      "findings": []
+    },
+    "PO": {
+      "layer": "PO",
+      "name": "Document Quality",
+      "durationSeconds": 0.0017379,
+      "findings": [
+        {
+          "check": "PO-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No report found \u2014 PO layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "VA": {
+      "layer": "VA",
+      "name": "Plan vs Audit",
+      "durationSeconds": 0.0007411,
+      "findings": [
+        {
+          "check": "VA-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No JSON report found \u2014 VA layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "VC": {
+      "layer": "VC",
+      "name": "Plan vs Code",
+      "durationSeconds": 0.0001823,
+      "findings": [
+        {
+          "check": "VC-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No JSON report found \u2014 VC layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "DC": {
+      "layer": "DC",
+      "name": "Obligations",
+      "durationSeconds": 0.404361,
+      "findings": [
+        {
+          "check": "doc-sdd-doc-target",
+          "file": "tsg:phase-0.5-source-lift (Operations)",
+          "field": "Operations",
+          "missingIn": "",
+          "severity": "Warning",
+          "message": "SDD doc target unsatisfied: tsg:phase-0.5-source-lift (Operations) (no uncommitted markdown change at docs/TSGs/Operations/phase-0-5-source-lift.md)",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "ADV": {
+      "layer": "ADV",
+      "name": "Adversarial",
+      "durationSeconds": 422.5458591,
+      "findings": [
+        {
+          "check": "BUG-001",
+          "file": "TestClientResourceManagement",
+          "field": "Long-running MCP server process accumulates leaked httpx.Client connection pools",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Long-running MCP server process accumulates leaked httpx.Client connection pools: expected Each client class (ServarrClient, QbtClient, Mylar3Client, PlexClient, HomebridgeClient) implements close() or context-manager protocol so connection pools and file descriptors are reclaimed, got httpx.Client instances are created in __init__ but none of the five classes implement close(), __del__, __enter__/__exit__. In the long-lived mcpo process, every instantiation leaks a connection pool and its underlying sockets",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestHomebridgeClient",
+          "field": "Homebridge login response lacks \u0027access_token\u0027 key (API version mismatch, error body, etc.)",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Homebridge login response lacks \u0027access_token\u0027 key (API version mismatch, error body, etc.): expected HomebridgeClient._login raises or retries with a clear error when token is missing from response, got _token is set to None via dict.get(\u0027access_token\u0027). Subsequent requests send literal header \u0027Authorization: Bearer None\u0027 (Python str(None)=\u0027None\u0027). Server returns 401, one blind retry occurs, then opaque HTTPStatusError is raised hiding the real cause",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestAuditLogger",
+          "field": "Audit logger propagates sensitive tool-call params to root/stdout because propagate is never disabled",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Audit logger propagates sensitive tool-call params to root/stdout because propagate is never disabled: expected configure_audit_logger sets logger.propagate = False so audit entries (which include raw param dicts that may contain credentials) are written only to the dedicated audit file, got logger.propagate remains True (default). Every audit() call propagates through the root logger, dumping tool params (potentially containing API keys, passwords, PII) to container stdout/stderr where log aggregators collect them",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestMylar3Client",
+          "field": "Mylar3 API returns JSON body with leading whitespace or UTF-8 BOM",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Mylar3 API returns JSON body with leading whitespace or UTF-8 BOM: expected Mylar3Client.call parses the response as JSON, got r.text.startswith((\u0027{\u0027, \u0027[\u0027)) is False when the body has leading whitespace/BOM and content-type header omits \u0027json\u0027. The method returns the raw text string, breaking callers that expect a dict/list",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-003",
+          "file": "TestAppleNowPlaying",
+          "field": "apple_now_playing with pyatv 0.14\u002B where \u0060metadata.playing\u0060 is an async method",
+          "missingIn": "",
+          "severity": "Critical",
+          "message": "apple_now_playing with pyatv 0.14\u002B where \u0060metadata.playing\u0060 is an async method: expected The coroutine \u0060atv.metadata.playing()\u0060 is awaited, returning a Playing object with title/artist/album, got \u0060hasattr(atv.metadata, \u0027playing\u0027)\u0060 is always True (it\u0027s a method), so \u0060p = atv.metadata.playing\u0060 assigns the bound method object. \u0060hasattr(p, \u0027__await__\u0027)\u0060 is False for a bound method (only True for coroutines), so \u0060p\u0060 is never awaited. All \u0060getattr(p, \u0027title\u0027, None)\u0060 etc. return None.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-003",
+          "file": "TestReadonlyAudit",
+          "field": "Write tools (sonarr_search_missing, qbt_pause, plex_scan_library, dirigera_set_light, etc.) call _audit() before _check_readonly(), writing a false \u0027ok\u0027 audit entry for rejected operations",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Write tools (sonarr_search_missing, qbt_pause, plex_scan_library, dirigera_set_light, etc.) call _audit() before _check_readonly(), writing a false \u0027ok\u0027 audit entry for rejected operations: expected _check_readonly() is called first (as done correctly in kube_restart/flux_reconcile), and _audit() records the outcome only if the readonly gate passes, got _audit(\u0027sonarr_search_missing\u0027, {}) writes result_summary=\u0027ok\u0027 to the audit log, then _check_readonly raises. The audit log now contains a misleading \u0027ok\u0027 entry for a rejected mutating call. At least 20 tools follow this reversed pattern (all *_search_missing, qbt_pause/resume, plex_scan_library, plex_maintenance, all dirigera_set_*, all apple_*, all unifi write tools, kube_image_can_pull).",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-004",
+          "file": "TestDirigeraTriggerScene",
+          "field": "dirigera_trigger_scene finds a scene by id when scene.info is None, then crashes accessing target.info.name in the return statement",
+          "missingIn": "",
+          "severity": "High",
+          "message": "dirigera_trigger_scene finds a scene by id when scene.info is None, then crashes accessing target.info.name in the return statement: expected Safe attribute access (getattr) like the search clause uses, got Search uses \u0060getattr(s.info, \u0027name\u0027, None)\u0060 defensively, but the return statement uses bare \u0060target.info.name\u0060 which raises AttributeError if \u0060info\u0060 is None. A scene matched by \u0060s.id == name_or_id\u0060 with \u0060s.info is None\u0060 triggers the crash after the scene has already been triggered.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-006",
+          "file": "TestHostJournal",
+          "field": "host_journal validates systemd unit name with _validate_k8s_name, which rejects uppercase, \u0027@\u0027, and underscores \u2014 all valid in systemd unit names",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "host_journal validates systemd unit name with _validate_k8s_name, which rejects uppercase, \u0027@\u0027, and underscores \u2014 all valid in systemd unit names: expected host_journal(\u0027NetworkManager\u0027) or host_journal(\u0027user@1000.service\u0027) should succeed, got _validate_k8s_name raises ValueError because _K8S_NAME_RE (^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$) rejects uppercase letters and \u0027@\u0027. Common units like NetworkManager, snapd.apparmor, getty@tty1 are all rejected.",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-005",
+          "file": "TestClientInit",
+          "field": "Lazy client init in _sonarr()/_radarr()/etc. uses check-then-write on module-level _clients dict without synchronization, and MCP servers may dispatch concurrent tool calls",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Lazy client init in _sonarr()/_radarr()/etc. uses check-then-write on module-level _clients dict without synchronization, and MCP servers may dispatch concurrent tool calls: expected Each service gets exactly one client instance, even under concurrent tool calls, got Two concurrent calls to e.g. sonarr_health() can both pass \u0060\u0027sonarr\u0027 not in _clients\u0060, both construct a ServarrClient, and one overwrites the other. If ServarrClient holds a session/auth state, the orphaned instance leaks or causes auth confusion. The pattern repeats for all 9 lazy-init helpers.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-007",
+          "file": "EntrypointSmokeTests",
+          "field": "The image entrypoint runs \u0060homelab-mcp\u0060, and \u0060pyproject.toml\u0060 maps that script to \u0060homelab_mcp.server:main\u0060, but this diff does not add \u0060src/homelab_mcp/server.py\u0060.",
+          "missingIn": "",
+          "severity": "Critical",
+          "message": "The image entrypoint runs \u0060homelab-mcp\u0060, and \u0060pyproject.toml\u0060 maps that script to \u0060homelab_mcp.server:main\u0060, but this diff does not add \u0060src/homelab_mcp/server.py\u0060.: expected Starting the container should import the configured module and run the MCP server., got Startup fails with \u0060ModuleNotFoundError: No module named \u0027homelab_mcp.server\u0027\u0060.",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-001",
+          "file": "ClientLifecycleTests",
+          "field": "All client wrappers (\u0060ServarrClient\u0060, \u0060QbtClient\u0060, \u0060Mylar3Client\u0060, \u0060PlexClient\u0060, \u0060HomebridgeClient\u0060) allocate \u0060httpx.Client\u0060 but expose no \u0060close()\u0060/context-manager path.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "All client wrappers (\u0060ServarrClient\u0060, \u0060QbtClient\u0060, \u0060Mylar3Client\u0060, \u0060PlexClient\u0060, \u0060HomebridgeClient\u0060) allocate \u0060httpx.Client\u0060 but expose no \u0060close()\u0060/context-manager path.: expected Network clients should be deterministically disposed (explicit close or context manager) to release sockets/file descriptors., got Resources remain open until GC, causing connection/socket buildup under repeated client construction.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "HomebridgeAuthTests",
+          "field": "Homebridge login returns HTTP 200 but omits/empties \u0060access_token\u0060 (schema drift or partial outage).",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Homebridge login returns HTTP 200 but omits/empties \u0060access_token\u0060 (schema drift or partial outage).: expected \u0060_login()\u0060 should validate token presence and raise a clear auth error immediately., got \u0060self._token\u0060 becomes \u0060None\u0060/empty and requests are sent with \u0060Authorization: Bearer None\u0060, producing misleading 401 retries.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "QbtAuthTests",
+          "field": "qBittorrent auth endpoint can return HTTP 200 with body \u0060Fails.\u0060 on bad credentials.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "qBittorrent auth endpoint can return HTTP 200 with body \u0060Fails.\u0060 on bad credentials.: expected \u0060QbtClient._login()\u0060 should verify success body/cookie before setting logged-in state., got \u0060_logged_in\u0060 is set \u0060True\u0060 solely on status code, deferring auth failure to later API calls and masking root cause.",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-003",
+          "file": "AppleToolsTests",
+          "field": "pyatv exposes \u0060metadata.playing()\u0060 as an async method. In \u0060apple_now_playing\u0060, \u0060p = atv.metadata.playing\u0060 stores the bound method instead of calling it.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "pyatv exposes \u0060metadata.playing()\u0060 as an async method. In \u0060apple_now_playing\u0060, \u0060p = atv.metadata.playing\u0060 stores the bound method instead of calling it.: expected \u0060apple_now_playing\u0060 should await the playing payload and return real media fields (title/artist/state)., got \u0060p\u0060 is a method object (not awaited), so returned fields are null/empty even when media is playing.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-008",
+          "file": "KubeImagePullTests",
+          "field": "\u0060kube_image_can_pull\u0060 creates a pod with \u0060/bin/true\u0060 and waits for \u0060condition=Ready\u0060.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "\u0060kube_image_can_pull\u0060 creates a pod with \u0060/bin/true\u0060 and waits for \u0060condition=Ready\u0060.: expected Successful image pull should return \u0060can_pull=True\u0060 even if the pod exits quickly with phase \u0060Succeeded\u0060., got Short-lived pods often never become Ready before completion, causing false \u0060can_pull=False\u0060 timeouts.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-005",
+          "file": "DirigeraInitTests",
+          "field": "First Dirigera init attempt fails transiently (network hiccup). \u0060_dirigera\u0060 caches \u0060_clients[\u0027dirigera\u0027] = None\u0060 inside the exception path.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "First Dirigera init attempt fails transiently (network hiccup). \u0060_dirigera\u0060 caches \u0060_clients[\u0027dirigera\u0027] = None\u0060 inside the exception path.: expected Later calls should retry initialization once connectivity/config is restored., got Subsequent calls return cached \u0060None\u0060 immediately and never retry, leaving Dirigera permanently unusable until process restart.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-002",
+          "file": "CloudflareDnsTests",
+          "field": "Cloudflare zone has more than 200 DNS records.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Cloudflare zone has more than 200 DNS records.: expected \u0060cf_dns_list\u0060 should paginate and return all records (or explicitly indicate partial results)., got Function requests only \u0060per_page=200\u0060 once and silently truncates larger zones.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-008",
+          "file": "LiftPhase05LeakScanTests",
+          "field": "Source contains a real credential in a non-.py file (e.g., mcp/scripts/bootstrap.sh or mcp/config/app.json).",
+          "missingIn": "",
+          "severity": "Critical",
+          "message": "Source contains a real credential in a non-.py file (e.g., mcp/scripts/bootstrap.sh or mcp/config/app.json).: expected Leak scan classifies high-entropy credential literals as blocking (\u0060real-secret\u0060) regardless of text file extension, and aborts before any copy., got High-entropy secret detection is gated by \u0060if path.suffix.lower() == \u0022.py\u0022\u0060, so credentials in .sh/.yaml/.json are not flagged and can be lifted.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-001",
+          "file": "VerifyLiftTests",
+          "field": "Inventory JSON accidentally contains duplicate tool names after a merge.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Inventory JSON accidentally contains duplicate tool names after a merge.: expected Verifier fails fast on duplicate \u0060inventory[\u0022tools\u0022][*][\u0022name\u0022]\u0060 entries., got \u0060expected = {t[\u0027name\u0027] for t in inventory[\u0027tools\u0027]}\u0060 silently de-duplicates collisions, so malformed inventory can still report OK.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-006",
+          "file": "SettingsPathTests",
+          "field": "Operator sets \u0060HOMELAB_MCP_AUDIT_LOG=~/homelab-mcp/custom.log\u0060.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Operator sets \u0060HOMELAB_MCP_AUDIT_LOG=~/homelab-mcp/custom.log\u0060.: expected Configured path is user-expanded to the home directory path., got Only the default path is expanded; explicit env values are returned as \u0060Path(\u0027~/...\u0027)\u0060, which can write to the wrong location or fail depending on cwd/filesystem.",
+          "isAdvisory": false
+        }
+      ]
+    }
+  }
+}

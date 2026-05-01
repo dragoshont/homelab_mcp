@@ -1,1 +1,50 @@
-[]
+[
+  {
+    "phase": "0.5",
+    "re_pinned_utc": "2026-05-01T14:00:00Z",
+    "from_commit": "0727116cc8217994bbb1a8d083bc95140671a580",
+    "to_commit": "5c25c3e9c7cd4094f5616e93de7db56b8ed459a7",
+    "tool_name_set_diff": {
+      "added": [],
+      "removed": []
+    },
+    "totals_diff": {
+      "tools": 0,
+      "writes": 0,
+      "readonly": 0
+    },
+    "rationale": "Phase 0.5 source-lift required source-side env-driven config refactor (Phase 0.4) and qBittorrent v5 endpoint fix. Both preserved the 133/29/104 tool inventory exactly; the re-pin captures the new HEAD with no change to the tool name set."
+  },
+  {
+    "phase": "0.5-followup",
+    "re_pinned_utc": "2026-05-01T15:00:00Z",
+    "from_commit": "5c25c3e9c7cd4094f5616e93de7db56b8ed459a7",
+    "to_commit": "3088e67dae3445ce4a76af630732cc2da7daebfa",
+    "tool_name_set_diff": {
+      "added": [],
+      "removed": []
+    },
+    "totals_diff": {
+      "tools": 0,
+      "writes": 0,
+      "readonly": 0
+    },
+    "rationale": "Phase 0.4 follow-up: 4 real bugs fixed in env-driven config (cf_default_zone allowlist membership, env_flag whitespace, ingress_host_re trailing-hyphen rejection, UNIFI_PORT empty handling) plus Dockerfile USER 1000 directive and tokenize-based docstring detection. Found by adversarial verify (Step 9 first run, 25 findings, 7 fixed in source + 3 in lift tooling). Tool inventory unchanged."
+  },
+  {
+    "phase": "0.5-followup-2",
+    "re_pinned_utc": "2026-05-01T15:30:00Z",
+    "from_commit": "3088e67dae3445ce4a76af630732cc2da7daebfa",
+    "to_commit": "71129a278e69632c4b43e1ffdf0d9d17581b1022",
+    "tool_name_set_diff": {
+      "added": [],
+      "removed": []
+    },
+    "totals_diff": {
+      "tools": 0,
+      "writes": 0,
+      "readonly": 0
+    },
+    "rationale": "Phase 0.5 verify run #2 surfaced 2 real source bugs missed in run #1: cf_default_zone allowlist-bypass when CF_ALLOWED_ZONES is empty (membership check now unconditional); audit_log_path empty-env fallback (was returning Path(''))(.). Plus 2 lift-script bugs fixed in homelab_mcp/tools/lift_phase_0_5.py: tokenize-aware # comment detection (no more false negatives on '#' inside string literals); leak-scan evaluated BEFORE any destination writes (no more partial copies on blocking findings). Tool inventory unchanged."
+  }
+]
