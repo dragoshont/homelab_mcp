@@ -74,8 +74,29 @@ ALL_SERVERS = {
 
 EXPECTED_TOTALS = {"tools": 133, "writes": 29, "readonly": 104}
 
-# AS-14: recognised decorator forms. Anything else fails strict mode.
+# AS-14: recognised decorator forms. The decorator MUST be `mcp.tool` (or
+# bare `mcp.tool` attribute) where `mcp` is the FastMCP app variable. A
+# decorator like `@cli.tool` or `@something_else.tool` is NOT an MCP tool
+# and must not be treated as one (verify finding ADV-001 critical).
+MCP_APP_NAMES = {"mcp"}
 RECOGNISED_DECORATOR_ATTRS = {"tool"}
+
+
+def _is_mcp_tool_decorator(dec: ast.expr) -> bool:
+    """Return True iff dec is `@mcp.tool` or `@mcp.tool(...)`.
+
+    Rejects bare names (`@tool`) and decorators rooted in other namespaces
+    (`@cli.tool`, `@app.tool`).
+    """
+    target = dec.func if isinstance(dec, ast.Call) else dec
+    if not isinstance(target, ast.Attribute):
+        return False
+    if target.attr not in RECOGNISED_DECORATOR_ATTRS:
+        return False
+    base = target.value
+    if isinstance(base, ast.Name) and base.id in MCP_APP_NAMES:
+        return True
+    return False
 
 
 class ValidationError(Exception):
@@ -92,45 +113,71 @@ def scan_server_tools(server_py: Path) -> list[str]:
             continue
         if not node.decorator_list:
             continue
-        recognised = False
+        # Any decorator with attr 'tool' on a top-level function MUST be
+        # an mcp.tool decorator. A different namespace (cli.tool, app.tool)
+        # is a strict-mode failure: either the source is using a non-MCP
+        # decorator that we must learn about, or it's wrong.
         for dec in node.decorator_list:
-            attr = None
-            if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
-                attr = dec.func.attr
-            elif isinstance(dec, ast.Attribute):
-                attr = dec.attr
-            elif isinstance(dec, ast.Name):
-                attr = dec.id
-            if attr in RECOGNISED_DECORATOR_ATTRS:
+            target = dec.func if isinstance(dec, ast.Call) else dec
+            if isinstance(target, ast.Attribute) and target.attr in RECOGNISED_DECORATOR_ATTRS:
+                if not _is_mcp_tool_decorator(dec):
+                    base = target.value
+                    base_repr = base.id if isinstance(base, ast.Name) else ast.dump(base)
+                    raise ValidationError(
+                        f"strict-mode: function {node.name!r} decorated with "
+                        f"{base_repr}.tool but only {sorted(MCP_APP_NAMES)}.tool is recognised"
+                    )
                 tools.append(node.name)
-                recognised = True
                 break
-        # AS-14: any decorated top-level function with NO recognised decorator
-        # is a strict-mode failure. Decorated functions intended to not be
-        # tools must live elsewhere.
-        if not recognised:
-            raise ValidationError(
-                f"strict-mode: function {node.name!r} has decorators but none match "
-                f"recognised tool forms {RECOGNISED_DECORATOR_ATTRS}"
-            )
     return tools
+
+
+def _extract_set_constants(seq: ast.expr) -> list[str] | None:
+    """Return string constants from a Set/List/Tuple, or None if not such."""
+    if isinstance(seq, (ast.Set, ast.List, ast.Tuple)):
+        return sorted(e.value for e in seq.elts if isinstance(e, ast.Constant))
+    return None
+
+
+def _extract_write_tools_value(value: ast.expr | None) -> list[str] | None:
+    """Pull tool names from any of the supported WRITE_TOOLS RHS forms.
+
+    Supported (verify findings ADV-002 / ADV-008 high):
+      - frozenset({"a", "b"}) / set({"a", "b"}) / tuple(["a", "b"])
+      - {"a", "b"} (bare set literal)
+      - ["a", "b"] (bare list literal)
+      - ("a", "b") (bare tuple literal)
+    Both ast.Assign and ast.AnnAssign reach here.
+    """
+    if value is None:
+        return None
+    # frozenset({...}) / set({...}) / tuple([...]) form.
+    if isinstance(value, ast.Call) and value.args:
+        names = _extract_set_constants(value.args[0])
+        if names is not None:
+            return names
+    # Bare set/list/tuple literal form.
+    return _extract_set_constants(value)
 
 
 def scan_write_tools(policy_py: Path) -> list[str]:
     src = policy_py.read_text(encoding="utf-8")
     module = ast.parse(src)
     for node in ast.walk(module):
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
+        # Plain assignment: WRITE_TOOLS = ...
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "WRITE_TOOLS":
+                    names = _extract_write_tools_value(node.value)
+                    if names is not None:
+                        return names
+        # Annotated assignment: WRITE_TOOLS: set[str] = ...
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
             if isinstance(target, ast.Name) and target.id == "WRITE_TOOLS":
-                value = node.value
-                if isinstance(value, ast.Call) and value.args:
-                    seq = value.args[0]
-                    if isinstance(seq, (ast.Set, ast.List, ast.Tuple)):
-                        return sorted(
-                            e.value for e in seq.elts if isinstance(e, ast.Constant)
-                        )
+                names = _extract_write_tools_value(node.value)
+                if names is not None:
+                    return names
     raise ValidationError("WRITE_TOOLS literal not found in policy.py")
 
 
@@ -189,6 +236,22 @@ def validate(source_repo: Path, expected_commit: str | None = None) -> int:
         raise ValidationError(f"T1 schema: missing keys {sorted(missing)}")
     if not isinstance(inventory["tools"], list):
         raise ValidationError("T1 schema: tools must be a list")
+    # Validate inventory["servers"] keys upfront so per-server lookups never
+    # KeyError later (verify findings ADV-008 critical / ADV-004 medium).
+    if not isinstance(inventory["servers"], dict):
+        raise ValidationError("T1 schema: servers must be a dict")
+    server_keys = set(inventory["servers"].keys())
+    unknown = server_keys - ALL_SERVERS
+    if unknown:
+        raise ValidationError(
+            f"T1 schema: inventory.servers contains unknown server key(s) {sorted(unknown)}; "
+            f"expected exactly {sorted(ALL_SERVERS)}"
+        )
+    missing_servers = ALL_SERVERS - server_keys
+    if missing_servers:
+        raise ValidationError(
+            f"T1 schema: inventory.servers missing required server key(s) {sorted(missing_servers)}"
+        )
     for t in inventory["tools"]:
         if not {"name", "server", "mutating"} <= t.keys():
             raise ValidationError(f"T1 schema: tool entry missing required keys: {t}")
@@ -228,8 +291,6 @@ def validate(source_repo: Path, expected_commit: str | None = None) -> int:
         raise ValidationError(
             f"T2 counts: readonly = {len(inventory_readonly)} != {EXPECTED_TOTALS['readonly']}"
         )
-    for srv, props in inventory["totals"].__class__ is dict and inventory.get("servers", {}).items() or []:
-        pass  # placeholder; per-server totals validated below.
 
     # T3: set-equality of tool names (the crucial RC check vs sum-only).
     diff = diff_sets(
@@ -301,8 +362,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--source-repo",
-        default=str(Path(r"C:\src\homelab")),
-        help="Path to the homelab source repo",
+        required=True,
+        help="Path to the homelab source repo (required; no default to keep this cross-platform)",
     )
     parser.add_argument(
         "--commit",
