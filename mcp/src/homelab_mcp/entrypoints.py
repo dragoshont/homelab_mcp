@@ -101,3 +101,100 @@ def _main_homeauto() -> None:
 
 def _main_control() -> None:
     run_domain("control")
+
+# --- Bundle (multi-domain) entry point ----------------------------------
+#
+# Phase 1.6: the bundle entry runs ``run_bundle(*domains)`` against an
+# explicit domain list resolved from (in priority order):
+#
+#   1. ``HOMELAB_MCP_BUNDLE_DOMAINS`` env (CSV, e.g. "platform,media").
+#      Set this in K8s/compose/systemd to drive bundle composition
+#      declaratively.
+#   2. A YAML config file at ``HOMELAB_MCP_BUNDLE_CONFIG`` with a
+#      top-level ``servers:`` list (subset of SUPPORTED_DOMAINS).
+#   3. Fallback: all five domains (drop-in for the pre-Phase-1.0
+#      ``homelab-mcp`` monolith console script behaviour).
+#
+# The CSV env wins over the YAML config so an operator can override
+# the baked-in YAML at runtime without rebuilding an image.
+#
+# Trust boundary: ``control`` is included only if the operator
+# explicitly lists it (CSV or YAML). The fallback "all five" preserves
+# pre-Phase-1.0 behaviour, but production deployments should NEVER
+# rely on the fallback for a control-bearing endpoint \u2014 always be
+# explicit, so a typo doesn't accidentally enable mutating tools.
+
+import os as _os
+
+
+def _read_yaml_servers(path: str) -> list[str] | None:
+    """Read a list[str] from ``servers:`` in the YAML config at *path*.
+
+    Returns None if the file doesn't exist; raises on malformed YAML or
+    missing/typed-incorrectly ``servers`` key.
+
+    Imports yaml lazily so the rest of the package doesn't hard-depend
+    on PyYAML \u2014 the bundle entry point is the only consumer.
+    """
+    if not _os.path.isfile(path):
+        return None
+    try:
+        import yaml  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover - install-time concern
+        raise RuntimeError(
+            f"HOMELAB_MCP_BUNDLE_CONFIG is set ({path}) but PyYAML is not "
+            f"installed; install with ``pip install homelab-mcp[bundle]`` or "
+            f"set HOMELAB_MCP_BUNDLE_DOMAINS as a CSV instead."
+        ) from exc
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    servers = data.get("servers")
+    if not isinstance(servers, list):
+        raise RuntimeError(
+            f"HOMELAB_MCP_BUNDLE_CONFIG {path!r}: top-level ``servers:`` "
+            f"must be a list of domain names; got {type(servers).__name__}"
+        )
+    out: list[str] = []
+    for entry in servers:
+        if not isinstance(entry, str):
+            raise RuntimeError(
+                f"HOMELAB_MCP_BUNDLE_CONFIG {path!r}: every entry under "
+                f"``servers:`` must be a string; got {type(entry).__name__}"
+            )
+        out.append(entry)
+    return out
+
+
+def _resolve_bundle_domains() -> tuple[str, ...]:
+    """Return the ordered tuple of domains the bundle should run."""
+    csv = _os.environ.get("HOMELAB_MCP_BUNDLE_DOMAINS", "").strip()
+    if csv:
+        domains = tuple(d.strip() for d in csv.split(",") if d.strip())
+        if not domains:
+            raise RuntimeError(
+                "HOMELAB_MCP_BUNDLE_DOMAINS is set but parses to an empty "
+                "list. Provide a CSV like 'platform,media' or unset the "
+                "variable to fall back to all five."
+            )
+        return domains
+    cfg = _os.environ.get("HOMELAB_MCP_BUNDLE_CONFIG", "").strip()
+    if cfg:
+        from_yaml = _read_yaml_servers(cfg)
+        if from_yaml is None:
+            raise RuntimeError(
+                f"HOMELAB_MCP_BUNDLE_CONFIG points at {cfg!r} which does "
+                f"not exist."
+            )
+        if not from_yaml:
+            raise RuntimeError(
+                f"HOMELAB_MCP_BUNDLE_CONFIG {cfg!r}: ``servers:`` list is "
+                f"empty. Add at least one of {SUPPORTED_DOMAINS}."
+            )
+        return tuple(from_yaml)
+    return SUPPORTED_DOMAINS
+
+
+def _main_bundle() -> None:
+    """Entry point for the ``homelab-mcp-bundle`` console script."""
+    domains = _resolve_bundle_domains()
+    run_bundle(*domains)
