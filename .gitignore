@@ -9,3 +9,7 @@ venv/
 *.egg-info/
 build/
 dist/
+
+# Rivet SDD evidence (per-phase build/verify artifacts, PR drafts, scratch)
+out/
+
