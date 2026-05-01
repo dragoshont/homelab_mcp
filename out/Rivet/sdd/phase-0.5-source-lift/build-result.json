@@ -1,0 +1,59 @@
+{
+  "step": 7,
+  "name": "Build + Test",
+  "workflow": "phase-0.5-source-lift",
+  "ran_utc": "2026-05-01T14:15:00Z",
+  "artifacts": [
+    {
+      "kind": "lifted-tests",
+      "command": "PYTHONPATH=C:\\src\\homelab_mcp\\mcp\\src python -m pytest mcp\\tests -q",
+      "exit_code": 0,
+      "stdout": "127 passed",
+      "asserts": [
+        "102 baseline tests still pass after lift",
+        "+ 24 test_settings_env_contract tests pass (env contract pinning)",
+        "+ 1 test_no_homelab_specifics_in_source test passes (static guard)",
+        "Lifted code is functionally identical to source"
+      ]
+    },
+    {
+      "kind": "g2-validator",
+      "command": "python tools\\validate_inventory.py --source-repo C:\\src\\homelab",
+      "exit_code": 0,
+      "stdout": "OK: 133/29/104 verified at source HEAD 5c25c3e9c7cd",
+      "asserts": [
+        "G-2 source repo's mcp/src/homelab_mcp/server.py still has 133 @mcp.tool decorators with the names recorded in tool-inventory.json"
+      ]
+    },
+    {
+      "kind": "g5-lift-completeness",
+      "command": "python tools\\verify_lift.py",
+      "exit_code": 0,
+      "stdout": "OK: G-5 lift-completeness verified \u2014 133 tools, set equality with inventory.",
+      "asserts": [
+        "G-5 the LIFTED mcp/src/homelab_mcp/server.py AST-scans to the same 133 tool names as docs/migration/tool-inventory.json. A partial lift (some files copied, others missed) would fail this check."
+      ]
+    },
+    {
+      "kind": "leak-scan",
+      "command": "python tools\\lift_phase_0_5.py --source-repo C:\\src\\homelab --dry-run",
+      "exit_code": 0,
+      "stdout": "OK: 17 file(s) would be lifted from 5c25c3e9c7cd; 0 leak finding(s), 0 blocking.",
+      "asserts": [
+        "Source repo (post-Phase-0.4 refactor) has no homelab-specific hostnames, IPs, usernames, or non-operator copyright headers in the mcp/ tree.",
+        "Hard commit-gate (real-secret + non-operator-copyright severities) clean."
+      ]
+    },
+    {
+      "kind": "manifest-roundtrip",
+      "command": "Implicit: lift_phase_0_5.py rehashes every written file and aborts on first mismatch.",
+      "exit_code": 0,
+      "asserts": [
+        "Every file in mcp/.lift-manifest.json's `files` list has identical SHA-256 between source-side bytes and destination-side bytes after the binary copy.",
+        "AS-3 mitigation effective: no autocrlf line-ending damage on text files."
+      ]
+    }
+  ],
+  "result": "PASS",
+  "rationale": "All 5 gates green. The lift is byte-faithful (manifest round-trip), inventory-complete (G-5), tests still pass at the new location (127), and the source side has not regressed (G-2). Source repo is public-clean (leak-scan 0 findings)."
+}

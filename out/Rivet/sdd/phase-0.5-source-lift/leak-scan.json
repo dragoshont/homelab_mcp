@@ -1,0 +1,15 @@
+{
+  "source_repo": "C:\\src\\homelab",
+  "source_commit": "5c25c3e9c7cd4094f5616e93de7db56b8ed459a7",
+  "scanned_utc": "2026-05-01T14:39:47.473426+00:00",
+  "block_severities": [
+    "non-operator-copyright",
+    "real-secret"
+  ],
+  "summary": {
+    "total": 0,
+    "blocking": 0,
+    "by_severity": {}
+  },
+  "findings": []
+}

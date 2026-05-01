@@ -1,1 +1,18 @@
-[]
+[
+  {
+    "phase": "0.5",
+    "re_pinned_utc": "2026-05-01T14:00:00Z",
+    "from_commit": "0727116cc8217994bbb1a8d083bc95140671a580",
+    "to_commit": "5c25c3e9c7cd4094f5616e93de7db56b8ed459a7",
+    "tool_name_set_diff": {
+      "added": [],
+      "removed": []
+    },
+    "totals_diff": {
+      "tools": 0,
+      "writes": 0,
+      "readonly": 0
+    },
+    "rationale": "Phase 0.5 source-lift required source-side env-driven config refactor (Phase 0.4) and qBittorrent v5 endpoint fix. Both preserved the 133/29/104 tool inventory exactly; the re-pin captures the new HEAD with no change to the tool name set."
+  }
+]

@@ -1,0 +1,93 @@
+{
+  "source_repo": "dragoshont/homelab",
+  "source_commit": "5c25c3e9c7cd4094f5616e93de7db56b8ed459a7",
+  "captured_utc": "2026-05-01T14:39:47.474652+00:00",
+  "decision_history_preservation": "fresh-history-no-filter-repo",
+  "files": [
+    {
+      "path": "mcp/Dockerfile",
+      "sha256": "c6279460b6f4cdf94caf1df7d1eb93c7a135401ce1660c535ff1e4d768e5abd8",
+      "bytes": 707
+    },
+    {
+      "path": "mcp/pyproject.toml",
+      "sha256": "2fde3e2d728605c2d6b5ce8bd4d0b54ff792a0ace2b9164f820db63037a37459",
+      "bytes": 559
+    },
+    {
+      "path": "mcp/src/homelab_mcp/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "mcp/src/homelab_mcp/app.py",
+      "sha256": "a49ca70dee9e6cef931f3d14c250af72f7bc9a0440dc6cc04ba459556e1d063f",
+      "bytes": 280
+    },
+    {
+      "path": "mcp/src/homelab_mcp/audit.py",
+      "sha256": "4ab2da540014d6f2b3bdf1b5a910db45d0db428e084a3943454e9fba0593e462",
+      "bytes": 1603
+    },
+    {
+      "path": "mcp/src/homelab_mcp/clients.py",
+      "sha256": "fe433470fa62e8ba1b47e86993502d15d5b30a37e858b31a6b8aaa73484a6035",
+      "bytes": 7739
+    },
+    {
+      "path": "mcp/src/homelab_mcp/main.py",
+      "sha256": "a5461157d1f04a1ebb3b9d00e964e716fb976f8a03484fc0b54b57887acb9c7c",
+      "bytes": 252
+    },
+    {
+      "path": "mcp/src/homelab_mcp/policy.py",
+      "sha256": "e02fdc21c5e4d1a50f6deeed5e404e8d4e9153e54c7e857069ba6bfa501fd04b",
+      "bytes": 1317
+    },
+    {
+      "path": "mcp/src/homelab_mcp/registry.py",
+      "sha256": "fbef22dc5026b413a98f77ef7689c8be25d7308647dc1992b5c8ff7a7b187304",
+      "bytes": 606
+    },
+    {
+      "path": "mcp/src/homelab_mcp/server.py",
+      "sha256": "6fb4ee56690ba875108e324c0bf972ee50791951418df5c9e36937f91f0d5a25",
+      "bytes": 119972
+    },
+    {
+      "path": "mcp/src/homelab_mcp/settings.py",
+      "sha256": "70a0101ec52a148b9e807055fcffe41932ade6391fcdf5c9be2a517b69901ae7",
+      "bytes": 6941
+    },
+    {
+      "path": "mcp/tests/conftest.py",
+      "sha256": "72180a5ebb9fba1f987308554e0f0ac284789bdca5cea4093ac78a5100b8800f",
+      "bytes": 1969
+    },
+    {
+      "path": "mcp/tests/test_architecture_refactor_contract.py",
+      "sha256": "89eca679d07081bb92ad63e6b78f9703ba734af4d98b3197a4dd63bd838ca738",
+      "bytes": 10823
+    },
+    {
+      "path": "mcp/tests/test_audit_status.py",
+      "sha256": "325b707b5a33545f53d5ca1d8ee226226daca1cdd683110ca2a9d65b5a2eb728",
+      "bytes": 2752
+    },
+    {
+      "path": "mcp/tests/test_no_homelab_specifics_in_source.py",
+      "sha256": "a805c9b2e098909a7716fbac75f769ef10b4d3021ce47e18e4cafdfeb6a9803a",
+      "bytes": 5243
+    },
+    {
+      "path": "mcp/tests/test_readonly_enforcement.py",
+      "sha256": "d6c7e0d82ff4783c3db189f1f61747a8a91bc8d4d503d9dff4f61b9ebf078aea",
+      "bytes": 9636
+    },
+    {
+      "path": "mcp/tests/test_settings_env_contract.py",
+      "sha256": "ceadbd80311ef9c7838a11cc89fbf7ec9cd74b5130db5ff20ce412a31d6ee122",
+      "bytes": 5994
+    }
+  ]
+}
