@@ -19,6 +19,7 @@ EXPOSE 8080
 # Drop to non-root before running the entrypoint. The K8s deployment also
 # sets runAsUser: 1000 / runAsNonRoot: true, but enforcing here as well makes
 # the image safe by default for any orchestrator.
+ENV HOME=/tmp
 USER 1000:1000
 
 # mcpo wraps the stdio MCP server (homelab-mcp) as an OpenAPI HTTP bridge.

@@ -20,6 +20,21 @@ POLICY = PACKAGE_ROOT / "policy.py"
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
 
+def _reset_logger_handlers(logger: logging.Logger) -> None:
+    """Detach + close every handler before clearing the list.
+
+    BUG-011 fix: a plain ``logger.handlers.clear()`` drops references to the
+    FileHandler objects without closing the underlying file descriptors.
+    On Windows that keeps a tempfile lock alive across test cases and
+    occasionally trips ``PermissionError: [WinError 32]`` on tmp_path
+    teardown. Always close-then-remove.
+    """
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        if isinstance(handler, logging.FileHandler):
+            handler.close()
+
+
 EXPECTED_TOOL_NAMES = {
     "ansible_inventory",
     "ansible_playbook_list",
@@ -240,7 +255,7 @@ def test_configure_audit_logger_does_not_duplicate_handlers(tmp_path):
     from homelab_mcp.audit import AUDIT_LOGGER_NAME, configure_audit_logger
 
     logger = logging.getLogger(AUDIT_LOGGER_NAME)
-    logger.handlers.clear()
+    _reset_logger_handlers(logger)
     log_path = tmp_path / "audit.log"
 
     first = configure_audit_logger(log_path)
@@ -256,7 +271,7 @@ def test_configure_audit_logger_preserves_unmanaged_handlers(tmp_path):
     from homelab_mcp.audit import AUDIT_LOGGER_NAME, configure_audit_logger
 
     logger = logging.getLogger(AUDIT_LOGGER_NAME)
-    logger.handlers.clear()
+    _reset_logger_handlers(logger)
     external_handler = logging.StreamHandler()
     logger.addHandler(external_handler)
 
@@ -265,16 +280,23 @@ def test_configure_audit_logger_preserves_unmanaged_handlers(tmp_path):
     assert external_handler in logger.handlers
 
 
-def test_configure_audit_logger_preserves_parent_propagation(tmp_path):
-    """Audit logger propagation must match the pre-refactor logging behavior."""
+def test_configure_audit_logger_disables_propagation(tmp_path):
+    """Audit logger must NOT propagate to ancestor handlers (BUG-007).
+
+    Audit records are an append-only sink; if the root logger has a stderr
+    handler installed by the operator, propagation duplicates every audit
+    line into stderr and desyncs from the on-disk audit file. The handler
+    on AUDIT_LOGGER_NAME is the canonical destination, full stop.
+    """
     from homelab_mcp.audit import AUDIT_LOGGER_NAME, configure_audit_logger
 
     logger = logging.getLogger(AUDIT_LOGGER_NAME)
-    logger.handlers.clear()
+    _reset_logger_handlers(logger)
+    logger.propagate = True  # Simulate any prior state.
 
     configure_audit_logger(tmp_path / "audit.log")
 
-    assert logger.propagate is True
+    assert logger.propagate is False
 
 
 def test_configure_audit_logger_rebinds_relative_path_after_cwd_change(tmp_path, monkeypatch):
@@ -282,7 +304,7 @@ def test_configure_audit_logger_rebinds_relative_path_after_cwd_change(tmp_path,
     from homelab_mcp.audit import AUDIT_LOGGER_NAME, configure_audit_logger
 
     logger = logging.getLogger(AUDIT_LOGGER_NAME)
-    logger.handlers.clear()
+    _reset_logger_handlers(logger)
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
     first_dir.mkdir()
@@ -337,3 +359,16 @@ def test_console_script_keeps_server_main_compatibility():
     functions = {node.name for node in server.body if isinstance(node, ast.FunctionDef)}
     assert 'homelab-mcp = "homelab_mcp.server:main"' in pyproject
     assert "main" in functions
+# --- BUG-006 regression test ---
+
+
+def test_dockerfile_sets_home_before_user(_=None):
+    """BUG-006: HOME must be set before USER 1000:1000 so SSH ~/.ssh resolves."""
+    import re
+    dockerfile = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text(encoding="utf-8")
+    home_match = re.search(r"^ENV\s+HOME=", dockerfile, re.MULTILINE)
+    user_match = re.search(r"^USER\s+1000", dockerfile, re.MULTILINE)
+    assert home_match is not None, "Dockerfile must declare ENV HOME=..."
+    assert user_match is not None, "Dockerfile must declare USER 1000:..."
+    assert home_match.start() < user_match.start(), \
+        "ENV HOME=... must appear BEFORE USER 1000:1000 (BUG-006)"

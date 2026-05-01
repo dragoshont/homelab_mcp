@@ -76,56 +76,70 @@ def _is_in_comment(line: str, match_start: int) -> bool:
 
 
 def _is_in_docstring(content: str, abs_pos: int) -> bool:
-    """Return True if abs_pos is inside a triple-quoted string.
+    """Return True if abs_pos falls inside a PEP 257 docstring.
 
-    Uses Python's tokenize module rather than naive substring counting:
-    a triple-quote sequence inside a regular string literal does not open
-    a docstring (the naive count would flip parity and misclassify).
+    BUG-012 fix: previous implementation treated *any* triple-quoted
+    string as a docstring, so a homelab-specific literal smuggled into
+    a triple-quoted string assigned to a module/class variable would
+    silently bypass this guard. PEP 257 only counts a string literal
+    that is the **first statement** of a module, class, or function
+    body as a docstring.
+
+    Uses ``ast`` to enumerate true docstring offsets and falls back to
+    refusing the skip on parse failure (safer default — a malformed
+    file can't smuggle a literal past the guard by failing to parse).
     """
-    import io
-    import tokenize
+    import ast
     try:
-        tokens = list(tokenize.tokenize(io.BytesIO(content.encode("utf-8")).readline))
-    except (tokenize.TokenizeError, IndentationError):
-        # Fall back to naive count if file fails to tokenize (shouldn't happen
-        # for valid Python source).
-        triple_double = content.count('"""', 0, abs_pos)
-        triple_single = content.count("'''", 0, abs_pos)
-        return (triple_double % 2 == 1) or (triple_single % 2 == 1)
-    # Walk tokens, track whether abs_pos falls inside a STRING token whose
-    # text starts with triple quotes.
-    for tok in tokens:
-        if tok.type != tokenize.STRING:
-            continue
-        text = tok.string
-        if not (text.startswith('"""') or text.startswith("'''")
-                or text.startswith('r"""') or text.startswith("r'''")
-                or text.startswith('b"""') or text.startswith("b'''")
-                or text.startswith('rb"""') or text.startswith("rb'''")
-                or text.startswith('br"""') or text.startswith("br'''")):
-            continue
-        # tok.start = (row, col); compute absolute offsets via line/col
-        # mapping. Cheaper: count lines+columns in content.
-        start_line, start_col = tok.start
-        end_line, end_col = tok.end
-        start_abs = _line_col_to_abs(content, start_line, start_col)
-        end_abs = _line_col_to_abs(content, end_line, end_col)
-        if start_abs <= abs_pos < end_abs:
-            return True
-    return False
+        tree = ast.parse(content)
+    except SyntaxError:
+        return False  # Don't grant the skip on unparseable source.
 
+    lines: list[str] = content.split("\n")
+    line_starts: list[int] = [0]
+    cumulative = 0
+    for line in lines:
+        cumulative += len(line) + 1  # +1 for the \n separator
+        line_starts.append(cumulative)
 
-def _line_col_to_abs(content: str, line: int, col: int) -> int:
-    """Convert a 1-based (line, col) tuple from tokenize to a 0-based absolute offset."""
-    abs_pos = 0
-    current_line = 1
-    while current_line < line and abs_pos < len(content):
-        nl = content.find("\n", abs_pos)
-        if nl == -1:
-            return abs_pos
-        abs_pos = nl + 1
-        current_line += 1
-    return abs_pos + col
+    def _docstring_node(body: list[ast.stmt]) -> ast.Constant | None:
+        if not body:
+            return None
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            return first.value
+        return None
+
+    docstring_ranges: list[tuple[int, int]] = []
+    nodes_with_body: list[ast.AST] = [tree]
+    nodes_with_body.extend(
+        n for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    )
+    for node in nodes_with_body:
+        body = getattr(node, "body", None)
+        if not isinstance(body, list):
+            continue
+        ds = _docstring_node(body)
+        if ds is None:
+            continue
+        # ast Constant nodes have lineno/col_offset (start) and
+        # end_lineno/end_col_offset (end). Convert to absolute offsets.
+        start_line = ds.lineno
+        start_col = ds.col_offset
+        end_line = getattr(ds, "end_lineno", start_line)
+        end_col = getattr(ds, "end_col_offset", start_col)
+        if start_line is None or end_line is None:
+            continue
+        start_abs = line_starts[start_line - 1] + start_col
+        end_abs = line_starts[end_line - 1] + end_col
+        docstring_ranges.append((start_abs, end_abs))
+
+    return any(start <= abs_pos < end for start, end in docstring_ranges)
 
 
 def _scan_file(path: Path) -> list[str]:
@@ -169,3 +183,37 @@ def test_no_homelab_specifics_in_source():
             f"Move each to an env var read via settings.py and update "
             f"apps/platform/mcp-proxy/deployment.yaml. Findings:\n  {joined}"
         )
+
+# --- BUG-012 regression tests for _is_in_docstring ---
+
+
+def test_is_in_docstring_recognises_module_docstring():
+    """BUG-012: an offset inside the module docstring must be classified as docstring."""
+    src = '"""module doc here\nspans lines\n"""\n\nx = 1\n'
+    pos = src.find("module doc")
+    assert _is_in_docstring(src, pos) is True
+
+
+def test_is_in_docstring_recognises_function_docstring():
+    """BUG-012: a function's first-statement string is a docstring."""
+    src = 'def f():\n    """func doc"""\n    return 1\n'
+    pos = src.find("func doc")
+    assert _is_in_docstring(src, pos) is True
+
+
+def test_is_in_docstring_rejects_assigned_triple_quoted_string():
+    """BUG-012 core: a triple-quoted string assigned to a variable is NOT a docstring.
+
+    A homelab-specific value smuggled into MY_TEMPLATE = '''...''' must NOT
+    be silently skipped by the no-homelab-specifics guard.
+    """
+    src = 'MY_TEMPLATE = """home.hont.ro is special"""\n'
+    pos = src.find("home.hont.ro")
+    assert _is_in_docstring(src, pos) is False
+
+
+def test_is_in_docstring_rejects_inline_triple_quoted_expression():
+    """BUG-012: a triple-quoted string used as an inline expression is NOT a docstring."""
+    src = 'def f():\n    return """home.hont.ro"""\n'
+    pos = src.find("home.hont.ro")
+    assert _is_in_docstring(src, pos) is False

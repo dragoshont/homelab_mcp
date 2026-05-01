@@ -60,7 +60,12 @@ def test_audit_default_status_is_ok(fresh_server):
 
 
 def test_audit_line_is_tab_separated_4_columns(fresh_server):
-    """MP-5: audit lines MUST split into exactly 4 TAB-separated columns."""
+    """MP-5: audit lines MUST split into exactly 4 TAB-separated columns.
+
+    BUG-008 fix: params is JSON-encoded with no whitespace separators,
+    so user-supplied tabs/newlines can no longer split a record into
+    extra columns or extra lines (log forging guard).
+    """
     m, audit = fresh_server(readonly=False)
     m._audit("col_test", {"a": 1}, "ok")
     line = _last_line(audit)
@@ -69,5 +74,38 @@ def test_audit_line_is_tab_separated_4_columns(fresh_server):
     ts, name, args, status = cols
     assert "T" in ts, f"col[0] should be ISO timestamp: {ts!r}"
     assert name == "col_test"
-    assert args == "{'a': 1}"
+    assert args == '{"a":1}'
     assert status == "ok"
+
+# --- BUG-008 regression tests ---
+
+
+def test_audit_line_resists_log_forging_via_newline(fresh_server):
+    """BUG-008: a newline in a param value must NOT split the record."""
+    m, audit = fresh_server(readonly=False)
+    m._audit("forge_test", {"evil": "row1\nfake_ts\tfake_tool\tfake_args\tok"}, "ok")
+    line = _last_line(audit)
+    cols = line.split("\t")
+    assert len(cols) == 4, f"newline-injected record splits row: {cols}"
+    # Status field at the end must still be the literal "ok" we passed in.
+    assert cols[3] == "ok"
+
+
+def test_audit_line_resists_log_forging_via_tab(fresh_server):
+    """BUG-008: a tab in a param value must NOT split the columns."""
+    m, audit = fresh_server(readonly=False)
+    m._audit("forge_test_tab", {"evil": "tabbed\tvalue"}, "ok")
+    line = _last_line(audit)
+    cols = line.split("\t")
+    assert len(cols) == 4, f"tab-injected param splits row: {cols}"
+
+
+def test_audit_status_strips_control_chars(fresh_server):
+    """BUG-008: tabs/newlines in result_summary are sanitised before write."""
+    m, audit = fresh_server(readonly=False)
+    m._audit("status_test", {}, "ok\textra\nrow")
+    line = _last_line(audit)
+    cols = line.split("\t")
+    assert len(cols) == 4, f"status-injected control chars split row: {cols}"
+    assert "\n" not in cols[3]
+    assert "\t" not in cols[3]

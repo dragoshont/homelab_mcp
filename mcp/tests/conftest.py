@@ -47,9 +47,13 @@ if not _module_available("httpx"):
     httpx_module = types.ModuleType("httpx")
 
     class Response:
-        status_code = 200
-        headers: dict[str, str] = {}
-        text = "{}"
+        # BUG-010 fix: per-instance state. Class-level mutable headers/text
+        # would let one test mutate the shim and contaminate every later
+        # Response() in the same run.
+        def __init__(self) -> None:
+            self.status_code = 200
+            self.headers: dict[str, str] = {}
+            self.text = "{}"
 
         def raise_for_status(self):
             return None
