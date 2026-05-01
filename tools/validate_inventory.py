@@ -127,6 +127,19 @@ def scan_server_tools(server_py: Path) -> list[str]:
                         f"strict-mode: function {node.name!r} decorated with "
                         f"{base_repr}.tool but only {sorted(MCP_APP_NAMES)}.tool is recognised"
                     )
+                # Verify finding ADV-001 critical: @mcp.tool(name="override")
+                # changes the registered tool name from the function name. The
+                # validator currently uses node.name. Until override-honoring
+                # is implemented, reject any kwargs/positional args on the
+                # decorator so the inventory cannot diverge silently from the
+                # registered name.
+                if isinstance(dec, ast.Call) and (dec.args or dec.keywords):
+                    raise ValidationError(
+                        f"strict-mode: function {node.name!r} uses @mcp.tool(...) with "
+                        f"arguments; this validator only supports bare @mcp.tool() "
+                        f"and @mcp.tool. If overrides are intended, extend the validator "
+                        f"to honor the registered name (e.g. name= kwarg)."
+                    )
                 tools.append(node.name)
                 break
     return tools
@@ -182,6 +195,11 @@ def scan_write_tools(policy_py: Path) -> list[str]:
     # function/class bodies and let a nested-scope `WRITE_TOOLS = ...`
     # silently shadow an unrecognised module-level form (verify run #2
     # finding ADV-002).
+    # Verify run #3 findings ADV-002/003 high: collect ALL module-level
+    # WRITE_TOOLS assignments and reject duplicates rather than returning
+    # the first match (which would be silently overridden at import time
+    # by Python's last-write-wins semantics).
+    matches: list[list[str]] = []
     for node in module.body:
         # Plain assignment: WRITE_TOOLS = ...
         if isinstance(node, ast.Assign):
@@ -189,15 +207,22 @@ def scan_write_tools(policy_py: Path) -> list[str]:
                 if isinstance(target, ast.Name) and target.id == "WRITE_TOOLS":
                     names = _extract_write_tools_value(node.value)
                     if names is not None:
-                        return names
+                        matches.append(names)
         # Annotated assignment: WRITE_TOOLS: set[str] = ...
         elif isinstance(node, ast.AnnAssign):
             target = node.target
             if isinstance(target, ast.Name) and target.id == "WRITE_TOOLS":
                 names = _extract_write_tools_value(node.value)
                 if names is not None:
-                    return names
-    raise ValidationError("WRITE_TOOLS literal not found in policy.py")
+                    matches.append(names)
+    if not matches:
+        raise ValidationError("WRITE_TOOLS literal not found in policy.py")
+    if len(matches) > 1:
+        raise ValidationError(
+            f"strict-mode: policy.py has {len(matches)} module-level WRITE_TOOLS "
+            f"definitions; the validator refuses to guess which is canonical"
+        )
+    return matches[0]
 
 
 def assign_server(tool_name: str, write_tools: set[str]) -> str:
