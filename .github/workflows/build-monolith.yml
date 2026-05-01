@@ -1,0 +1,55 @@
+name: Build monolith (GHCR)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mcp/**"
+      - ".github/workflows/build-monolith.yml"
+      - ".github/actions/build-mcp-image/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-monolith-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute tags
+        id: tags
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/${{ github.repository_owner }}/homelab-mcp:main"
+            echo "ghcr.io/${{ github.repository_owner }}/homelab-mcp:sha-${short_sha}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push to GHCR
+        uses: ./.github/actions/build-mcp-image
+        with:
+          tags: ${{ steps.tags.outputs.tags }}
+          push: "true"
+          cache-scope: monolith-main
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.title=homelab-mcp
+            org.opencontainers.image.description=Homelab MCP monolith server (mcpo HTTP bridge over stdio MCP)
