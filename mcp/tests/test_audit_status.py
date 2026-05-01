@@ -20,8 +20,8 @@ def fresh_server(monkeypatch, tmp_path):
             monkeypatch.setenv("HOMELAB_MCP_READONLY", "true")
         else:
             monkeypatch.delenv("HOMELAB_MCP_READONLY", raising=False)
-        sys.modules.pop("homelab_mcp.server", None)
-        return importlib.import_module("homelab_mcp.server"), audit_log
+        from conftest import reload_server_facade  # type: ignore[import]
+        return reload_server_facade(), audit_log
 
     return _reload
 

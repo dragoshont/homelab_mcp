@@ -37,16 +37,24 @@ EXPECTED_WRITE_TOOLS = frozenset({
 
 
 def _reload_server(readonly: bool):
-    """Reload server module under a specific HOMELAB_MCP_READONLY value.
+    """Reload the post-split package under a specific HOMELAB_MCP_READONLY value.
 
-    `_READONLY` is read once at import time; we must reload for env to apply.
+    Returns a facade (see ``conftest.reload_server_facade``) that proxies
+    attribute access across ``_runtime`` and the five ``tools/*`` modules.
+    Tests written against the pre-split monolith continue to work because
+    the facade preserves the exact same ``mod.<helper>`` / ``mod.<tool>``
+    surface, and ``monkeypatch.setattr(mod, name, value)`` propagates to
+    every module that has ``name`` bound at module scope.
+
+    ``_READONLY`` is read once at import time of ``_runtime``; the facade
+    drops the cached modules so the reload picks up the new env.
     """
     if readonly:
         os.environ["HOMELAB_MCP_READONLY"] = "true"
     else:
         os.environ.pop("HOMELAB_MCP_READONLY", None)
-    sys.modules.pop("homelab_mcp.server", None)
-    return importlib.import_module("homelab_mcp.server")
+    from conftest import reload_server_facade  # type: ignore[import]
+    return reload_server_facade()
 
 
 def test_write_tools_set_matches_expected():
@@ -91,7 +99,16 @@ def test_check_readonly_allows_unknown_tool_even_in_readonly():
 def teardown_module(_mod):
     """Restore non-readonly state for downstream tests."""
     os.environ.pop("HOMELAB_MCP_READONLY", None)
-    sys.modules.pop("homelab_mcp.server", None)
+    for name in (
+        "homelab_mcp._runtime",
+        "homelab_mcp.server",
+        "homelab_mcp.tools.platform",
+        "homelab_mcp.tools.media",
+        "homelab_mcp.tools.network",
+        "homelab_mcp.tools.homeauto",
+        "homelab_mcp.tools.control",
+    ):
+        sys.modules.pop(name, None)
 
 
 # ---------------------------------------------------------------------------
