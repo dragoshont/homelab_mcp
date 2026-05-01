@@ -77,8 +77,19 @@ def main() -> int:
         return 4
 
     scanned = set(scanned_list)
-    inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
-    inventory_names = [t["name"] for t in inventory["tools"]]
+    try:
+        inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
+        inventory_names = [t["name"] for t in inventory["tools"]]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        # Malformed/missing inventory must produce a single FAIL line and a
+        # non-zero exit code rather than a raw traceback, so the gate stays
+        # deterministic in CI logs.
+        print(
+            f"FAIL: could not load inventory at {args.inventory}: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 6
 
     # Detect duplicates in the INVENTORY too: a malformed inventory could
     # collide names that the set-comparison silently de-duplicates.

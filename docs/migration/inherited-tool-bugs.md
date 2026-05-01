@@ -30,7 +30,7 @@ its containing tool is moved into a domain-scoped package.
 | ADV-002-image-list-tags-limit-zero | `server.py:image_list_tags` | `tags[-0:]` returns ALL tags instead of zero. | Validate `limit >= 1` or special-case 0. |
 | ADV-004-host-status-mem-parse | `server.py:host_status` | If `MEM:` value is empty (SSH partial failure), `int('')` raises `ValueError`. | `try/except ValueError` returning `{"mem_error": ...}`. |
 | ADV-004-homebridge-no-token | `clients.py:HomebridgeClient._login` | Login response missing `access_token` key sets `self._token = None`; subsequent `Authorization: Bearer None` header fails opaquely. | Reject missing token at login with clear error. |
-| ADV-004-kube-image-present-no-crictl | `server.py:kube_image_present` | Fallback `|| echo '[]'` returns a JSON array, but code unconditionally calls `data.get(...)`. | Type-check before `.get`. |
+| ADV-004-kube-image-present-no-crictl | `server.py:kube_image_present` | Fallback `\|\| echo '[]'` returns a JSON array, but code unconditionally calls `data.get(...)`. | Type-check before `.get`. |
 | ADV-008-check-readonly-signature | `policy.py:check_readonly` | Type annotation says `Callable[[str, dict, str], None]` but `audit.audit` requires Logger as first arg. Direct passing raises TypeError. | Either bind logger via partial in server.py (current behaviour) or update annotation to match. |
 
 ## What "addressed in Phase 1+" means
@@ -43,3 +43,22 @@ each MUST:
 3. Mark the row above as `(FIXED <commit>)` in this file.
 
 This file is the canonical to-do list for inherited code-quality work.
+
+## Bugs surfaced by Phase 0.5 PR review (2026-05-01, PR #2)
+
+CodeRabbit and GitHub Copilot reviewed the lifted code in PR #2 and surfaced
+seven additional pre-existing bugs in source `dragoshont/homelab` that were
+lifted byte-faithfully into `mcp/`. Per the same MP-2 byte-faithful contract,
+these are **not fixed in PR #2**; they will be addressed in Phase 1+ when each
+touching module is split into its domain package.
+
+| ID | File | Symptom | Fix sketch |
+|----|------|---------|------------|
+| BUG-006-dockerfile-home-unset | `mcp/Dockerfile` | After `USER 1000:1000` the image has no `HOME` env, so `~` resolves to `/root` despite `/tmp/.ssh` being the prepared SSH dir. SSH client may write to `/root/.ssh/known_hosts` and fail with EACCES. | `ENV HOME=/tmp` immediately before `USER 1000:1000`. |
+| BUG-007-audit-propagate | `mcp/src/homelab_mcp/audit.py:38` | `logging.getLogger(...)` returns a logger with `propagate=True`. Audit records bubble to the root logger, so any operator handler (stderr, structured logs) gets a duplicate copy of audit lines, which can desync from the on-disk audit log. | Set `logger.propagate = False` after attaching the file handler. |
+| BUG-008-audit-log-forging | `mcp/src/homelab_mcp/audit.py:44` | Params column is rendered with `f"{params}"` (`dict.__repr__`). Tabs/newlines in user-supplied values can split a record into extra columns or extra lines, breaking the 4-column audit contract and enabling log forging. | `json.dumps(params, separators=(",", ":"))`; also escape the status field. |
+| BUG-009-settings-no-expanduser | `mcp/src/homelab_mcp/settings.py:75-78` | Operator-supplied `HOMELAB_MCP_AUDIT_LOG=~/logs/audit.log` is wrapped in `Path(raw)` without `expanduser`, producing a literal `~`-prefixed path. Only the fallback path is expanded. | Always `os.path.expanduser(raw)` before `Path(...)`. |
+| BUG-010-conftest-shared-headers | `mcp/tests/conftest.py:49-58` | `Response.headers` shim is a class-level `{}`, so mutating one stub response contaminates every later `Response()` in the same test run. | Initialize `headers` per instance in `__init__`. |
+| BUG-011-test-handler-leak | `mcp/tests/test_architecture_refactor_contract.py:245` | `logger.handlers.clear()` detaches `FileHandler`s without closing them, leaking descriptors and (on Windows) keeping temp files locked across the test module. | Iterate handlers, call `removeHandler` + `close()` on `FileHandler` instances. |
+| BUG-012-docstring-detection | `mcp/tests/test_no_homelab_specifics_in_source.py:115` | The static guard treats triple-quoted strings assigned to variables as docstrings (and skips them). PEP 257 only counts the first standalone string statement as a docstring; everything else should be scanned. | Use `ast` to identify true docstrings instead of textual heuristics. |
+

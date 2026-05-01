@@ -52,7 +52,7 @@
       "rule": "AS-001",
       "severity": "medium",
       "title": "validate_inventory only proves source repo, not lift completeness",
-      "description": "spec.md G-2 said `validate_inventory.py --source-repo C:\\src\\homelab` exit 0 proves inventory parity. But that script scans the SOURCE repo's `mcp/src/homelab_mcp/server.py`, not the LIFTED file in homelab_mcp. The check would pass even if the lift forgot a file or copied an empty file (because the source is unchanged). G-2 was therefore proving the wrong invariant.",
+      "description": "spec.md G-2 said `validate_inventory.py --source-repo <source-repo>` exit 0 proves inventory parity. But that script scans the SOURCE repo's `mcp/src/homelab_mcp/server.py`, not the LIFTED file in homelab_mcp. The check would pass even if the lift forgot a file or copied an empty file (because the source is unchanged). G-2 was therefore proving the wrong invariant.",
       "evidence": "tools/validate_inventory.py reads `source_repo / 'mcp' / 'src' / 'homelab_mcp' / 'server.py'`, never the lifted path in this repo.",
       "disposition": "ACCEPT.",
       "action": "design.md §2.5 added G-5 (lift-completeness): re-run the same AST scan on the LIFTED `homelab_mcp/mcp/src/homelab_mcp/server.py` and assert tool name set EQUALS the inventory. Step 5 ships a small `tools/verify_lift.py` wrapper that performs this check.",

@@ -56,7 +56,7 @@
   "must_fail": [
     {"id": "MF-1", "title": "Hash mismatch on any lifted file", "rejection_proven": true, "evidence": "lift script aborts with exit code 2 on first hash mismatch; tested implicitly because all 17 files round-tripped successfully."},
     {"id": "MF-2", "title": "real-secret or non-operator-copyright finding not triaged", "rejection_proven": true, "evidence": "lift script exits with code 3 and refuses to write mcp/.lift-manifest.json; demonstrated when source still had hardcoded values (8 findings -> 4 -> 0 across Phase 0.4 iterations)."},
-    {"id": "MF-3", "title": "PR modifies any file in C:\\src\\homelab", "rejection_proven": true, "evidence": "git status -s in source repo before vs after Phase 0.5 implementation shows zero changes attributable to the lift step. The Phase 0.4 commits to source were a separate, deliberate, pre-approved change."},
+    {"id": "MF-3", "title": "PR modifies any file in <source-repo>", "rejection_proven": true, "evidence": "git status -s in source repo before vs after Phase 0.5 implementation shows zero changes attributable to the lift step. The Phase 0.4 commits to source were a separate, deliberate, pre-approved change."},
     {"id": "MF-4", "title": "mcp/.lift-manifest.json missing or hashes don't reproduce", "rejection_proven": true, "evidence": "Manifest exists and round-trips; build-result.json kind=manifest-roundtrip records the assertion."},
     {"id": "MF-5", "title": "pytest fails or <102 passing", "rejection_proven": true, "evidence": "127 passed > 102 minimum. New tests don't break old ones."}
   ],

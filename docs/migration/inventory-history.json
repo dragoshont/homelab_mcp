@@ -35,7 +35,7 @@
     "phase": "0.5-followup-2",
     "re_pinned_utc": "2026-05-01T15:30:00Z",
     "from_commit": "3088e67dae3445ce4a76af630732cc2da7daebfa",
-    "to_commit": "71129a278e69ace23eb09064c2d20810cb3d1bbe",
+    "to_commit": "71129a278e69632c4b43e1ffdf0d9d17581b1022",
     "tool_name_set_diff": {
       "added": [],
       "removed": []

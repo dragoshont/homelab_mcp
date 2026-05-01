@@ -168,11 +168,11 @@ Files this Step 5 implementation creates or modifies in dragoshont/homelab_mcp:
 | mcp/pyproject.toml | ✓ | |
 | mcp/conftest.py (if present in source) | ✓ | |
 | mcp/.lift-manifest.json | ✓ | |
-| 	ools/verify_lift.py (G-5 helper) | ✓ | |
-| 	ools/leak_scan.py (RK-1/AS-2 helper) | ✓ | |
+| tools/verify_lift.py (G-5 helper) | ✓ | |
+| tools/leak_scan.py (RK-1/AS-2 helper) | ✓ | |
 | out/Rivet/sdd/phase-0.5-source-lift/leak-scan.json (evidence) | ✓ | |
 
 Files explicitly NOT modified by this step:
 
 - Any file in C:\src\homelab\ (the source repo) — read-only.
-- Any file in dragoshont/homelab_mcp outside mcp/, 	ools/, and out/Rivet/sdd/phase-0.5-source-lift/ — Phase 0 artifacts and SDD evidence are untouched.
+- Any file in dragoshont/homelab_mcp outside mcp/, tools/, and out/Rivet/sdd/phase-0.5-source-lift/ — Phase 0 artifacts and SDD evidence are untouched.

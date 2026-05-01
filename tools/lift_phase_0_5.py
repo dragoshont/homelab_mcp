@@ -17,7 +17,6 @@ writes nothing.
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import json
 import re
@@ -172,10 +171,15 @@ def leak_scan_file(path: Path, content: bytes) -> list[dict]:
             is_comment = in_python_comment or (path.suffix.lower() != ".py" and line_prefix_comment)
             is_example = "example" in line.lower() or "e.g." in line.lower()
             if not is_comment and not is_example:
+                # Treat RFC1918 leakage uniformly across file types: a private
+                # IP in a Dockerfile, TOML, YAML or JSON is just as harmful in
+                # a public repo as one in a .py file. Operators that genuinely
+                # need an IP literal must annotate the line with `example` /
+                # `e.g.` or place it in a comment.
                 findings.append({
                     "path": str(path),
                     "kind": "rfc1918-ip",
-                    "severity": "real-secret" if path.suffix.lower() == ".py" else "low",
+                    "severity": "real-secret",
                     "match": m.group(0),
                     "line": text.count("\n", 0, m.start()) + 1,
                     "note": "Private IP appearing in non-comment context.",

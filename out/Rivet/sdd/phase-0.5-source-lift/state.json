@@ -20,7 +20,7 @@
       "instructions": "Run rivet context --intent code and save the contract to context.json. Review workflow recommendations, deterministic knowledge, and completeness before writing code.",
       "status": "done",
       "completedAt": "2026-05-01T13:06:20.2922607\u002B00:00",
-      "evidence": "Context generated for phase-0.5-source-lift. Repo is fresh (1 prior PR merged); no source code yet. Phase 0.5 will lift the existing 133-tool monolith from C:\\src\\homelab\\mcp\\src\\homelab_mcp/ into this repo with fresh git history (no filter-repo)."
+      "evidence": "Context generated for phase-0.5-source-lift. Repo is fresh (1 prior PR merged); no source code yet. Phase 0.5 will lift the existing 133-tool monolith from <source-repo>/mcp/src/homelab_mcp/ into this repo with fresh git history (no filter-repo)."
     },
     {
       "id": 2,
@@ -102,7 +102,7 @@
       "status": "pending"
     }
   ],
-  "wikiRepoPath": "C:\\src\\upgrade-assistant-wiki",
+  "wikiRepoPath": "<wiki-repo>",
   "rigor": "full",
   "docTargets": [
     {

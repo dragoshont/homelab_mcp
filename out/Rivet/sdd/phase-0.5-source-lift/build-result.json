@@ -6,7 +6,7 @@
   "artifacts": [
     {
       "kind": "lifted-tests",
-      "command": "PYTHONPATH=C:\\src\\homelab_mcp\\mcp\\src python -m pytest mcp\\tests -q",
+      "command": "PYTHONPATH=<repo-root>\\mcp\\src python -m pytest mcp\\tests -q",
       "exit_code": 0,
       "stdout": "127 passed",
       "asserts": [
@@ -18,7 +18,7 @@
     },
     {
       "kind": "g2-validator",
-      "command": "python tools\\validate_inventory.py --source-repo C:\\src\\homelab",
+      "command": "python tools\\validate_inventory.py --source-repo <source-repo>",
       "exit_code": 0,
       "stdout": "OK: 133/29/104 verified at source HEAD 5c25c3e9c7cd",
       "asserts": [
@@ -36,7 +36,7 @@
     },
     {
       "kind": "leak-scan",
-      "command": "python tools\\lift_phase_0_5.py --source-repo C:\\src\\homelab --dry-run",
+      "command": "python tools\\lift_phase_0_5.py --source-repo <source-repo> --dry-run",
       "exit_code": 0,
       "stdout": "OK: 17 file(s) would be lifted from 5c25c3e9c7cd; 0 leak finding(s), 0 blocking.",
       "asserts": [

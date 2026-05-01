@@ -2,7 +2,7 @@
 ║              RIVET CONTEXT COLLECTOR                          ║
 ╚══════════════════════════════════════════════════════════════╝
 
-  Repo:    C:\src\homelab_mcp
+  Repo:    <source-repo>
   Branch:  feat/phase-0.5-source-lift
   CLI:     2.9.21
   Solutions: 0
@@ -31,7 +31,7 @@
   "timestamp": "2026-05-01T13:06:19.5818453\u002B00:00",
   "intent": "code",
   "repository": {
-    "repoRoot": "C:\\src\\homelab_mcp",
+    "repoRoot": "<source-repo>",
     "branch": "feat/phase-0.5-source-lift",
     "cliVersion": "2.9.21",
     "solutions": [],

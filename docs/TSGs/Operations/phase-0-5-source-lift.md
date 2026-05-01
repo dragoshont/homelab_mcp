@@ -1,6 +1,6 @@
 # TSG: Phase 0.5 source-lift (`homelab` → `homelab_mcp`)
 
-> **Status:** completed 2026-05-01. Source `homelab` HEAD `5c25c3e9c7cd` lifted into `homelab_mcp`.
+> **Status:** completed 2026-05-01. Source `homelab` HEAD `71129a278e69632c4b43e1ffdf0d9d17581b1022` (short `71129a2`) lifted into `homelab_mcp` over three rounds: initial lift, two follow-up re-lifts after source bug-fixes surfaced by the lift's adversarial review. The byte-faithful pin is the final commit; intermediate lifts are recorded in `docs/migration/inventory-history.json`.
 
 ## What this TSG covers
 
@@ -44,7 +44,7 @@ implementation. It:
 |------|---------|----------------|
 | G-2 source unchanged | `python tools/validate_inventory.py --source-repo C:\src\homelab` | The source repo's tool name set still matches `docs/migration/tool-inventory.json` (133/29/104). |
 | G-5 lift complete | `python tools/verify_lift.py` | The **lifted** `mcp/src/homelab_mcp/server.py` AST-scans to the same 133 tool names. Catches a partial copy that G-2 alone would miss. |
-| Test parity | `cd mcp && PYTHONPATH=$PWD/src python -m pytest tests -q` | All 127 tests pass in the new home (102 baseline + 25 new from Phase 0.4 env contract). |
+| Test parity | `cd mcp && PYTHONPATH=$PWD/src python -m pytest tests -q` | All 136 tests pass in the new home (102 baseline + 34 hardening tests added during Phase 0.4 + 0.5: env-driven settings contract, audit status, readonly enforcement, no-homelab-specifics static guard, architecture refactor invariants). |
 | Manifest round-trip | `python -c "..."` (one-liner in `design.md` §2.5) | Recomputing SHA-256 of every lifted file equals the recorded manifest hash. |
 
 ## Diagnostic recipes (when something goes wrong)

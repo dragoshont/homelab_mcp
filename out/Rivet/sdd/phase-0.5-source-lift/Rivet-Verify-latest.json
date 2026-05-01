@@ -254,7 +254,7 @@
     "requestedProvider": "copilot-sdk",
     "effectiveProvider": "copilot-sdk",
     "modelResolutionMode": "sdk-defaults",
-    "copilotCliPath": "C:\\Users\\dragoshont\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe",
+    "copilotCliPath": "<redacted-user-path>\\copilot.exe",
     "copilotCliSource": "winget",
     "copilotCliVersion": "",
     "sdkStartupStatus": "started",
