@@ -142,6 +142,16 @@ def scan_server_tools(server_py: Path) -> list[str]:
                     )
                 tools.append(node.name)
                 break
+    # Verify run #4 ADV-001/002: if source has two top-level functions with
+    # the same name and both are decorated, Python only registers the last
+    # (last-write-wins on the module dict) but our list would contain both.
+    # Reject that ambiguity rather than silently inflating the count.
+    if len(set(tools)) != len(tools):
+        dupes = sorted({n for n in tools if tools.count(n) > 1})
+        raise ValidationError(
+            f"strict-mode: server.py has duplicate top-level @mcp.tool function names {dupes}; "
+            f"Python registers only the last definition, the validator refuses to guess"
+        )
     return tools
 
 
