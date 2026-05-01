@@ -1,0 +1,699 @@
+{
+  "source_commit": "0727116cc8217994bbb1a8d083bc95140671a580",
+  "source_repo": "github.com/dragoshont/homelab",
+  "captured_utc": "2026-05-01T00:00:00Z",
+  "totals": {
+    "tools": 133,
+    "writes": 29,
+    "readonly": 104
+  },
+  "servers": {
+    "homelab-mcp-platform": {
+      "tools": 51,
+      "role": "readonly"
+    },
+    "homelab-mcp-media": {
+      "tools": 30,
+      "role": "readonly"
+    },
+    "homelab-mcp-network": {
+      "tools": 7,
+      "role": "readonly"
+    },
+    "homelab-mcp-homeauto": {
+      "tools": 16,
+      "role": "readonly"
+    },
+    "homelab-mcp-control": {
+      "tools": 29,
+      "role": "control"
+    }
+  },
+  "tools": [
+    {
+      "name": "ansible_inventory",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "ansible_playbook_list",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "apple_apps",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "apple_devices",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "apple_launch_app",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "apple_now_playing",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "apple_play_pause",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "apple_remote",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "apple_run_shortcut",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "apple_scan",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "apple_volume",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "audit_tail",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "backup_snapshots",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "backup_status",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "cert_manager_status",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "cf_dns_get",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "cf_dns_list",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "dirigera_blinds",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "dirigera_devices",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "dirigera_lights",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "dirigera_outlets",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "dirigera_scenes",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "dirigera_sensors",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "dirigera_set_blind",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "dirigera_set_light",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "dirigera_set_outlet",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "dirigera_status",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "dirigera_trigger_scene",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "dns_completeness_check",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "flux_diff",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "flux_reconcile",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "flux_resume",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "flux_status",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "flux_suspend",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "gitops_app_inventory",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "gitops_drift",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "gitops_secret_audit",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "homebridge_accessories",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "homebridge_log_errors",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "homebridge_plugins",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "homebridge_status",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "homelab_overview",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_auth_log",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_disk",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_dmesg_errors",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_failed_units",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_journal",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_mount_status",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_nfs_status",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_os_version",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_packages_upgradable",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_reboot_required",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_security_audit",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_services",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_smart",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_status",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "host_syslog_errors",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "image_compare_tags",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "image_inspect",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "image_list_tags",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "ingress_probe",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_crashloop_pods",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_describe",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_events",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_image_can_pull",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "kube_image_present",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_ingress_validate",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_init_container_logs",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_log_errors",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_logs",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_netpol_list",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_oom_events",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_orphan_cleanup_preview",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_pods",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_previous_logs",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_pvc_usage",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_resource_audit",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_restart",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "kube_rollout_status",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_service_endpoints",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "kube_top_pods",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "lidarr_health",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "lidarr_missing",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "lidarr_search_missing",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "media_disk_pressure",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "media_indexer_health",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "media_pipeline_health",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "mylar3_health",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "mylar3_missing",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "mylar3_search_missing",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "mylar3_series",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "netdata_query",
+      "server": "homelab-mcp-platform",
+      "mutating": false
+    },
+    {
+      "name": "plex_libraries",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "plex_maintenance",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "plex_recent",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "plex_scan_library",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "plex_status",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "prowlarr_add_torznab_indexer",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "prowlarr_health",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "prowlarr_remove_indexer",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "prowlarr_search",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "prowlarr_test_indexers",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "qbt_pause",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "qbt_resume",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "qbt_status",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "qbt_torrents",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "radarr_calendar",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "radarr_health",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "radarr_missing",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "radarr_movies",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "radarr_queue",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "radarr_search_missing",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "readarr_health",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "readarr_missing",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "readarr_search_missing",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "scrypted_status",
+      "server": "homelab-mcp-homeauto",
+      "mutating": false
+    },
+    {
+      "name": "sonarr_calendar",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "sonarr_health",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "sonarr_missing",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "sonarr_queue",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "sonarr_search_missing",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "sonarr_series",
+      "server": "homelab-mcp-media",
+      "mutating": false
+    },
+    {
+      "name": "unifi_block",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "unifi_client",
+      "server": "homelab-mcp-network",
+      "mutating": false
+    },
+    {
+      "name": "unifi_clients",
+      "server": "homelab-mcp-network",
+      "mutating": false
+    },
+    {
+      "name": "unifi_devices",
+      "server": "homelab-mcp-network",
+      "mutating": false
+    },
+    {
+      "name": "unifi_health",
+      "server": "homelab-mcp-network",
+      "mutating": false
+    },
+    {
+      "name": "unifi_port_forwards",
+      "server": "homelab-mcp-network",
+      "mutating": false
+    },
+    {
+      "name": "unifi_reconnect",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "unifi_top_talkers",
+      "server": "homelab-mcp-network",
+      "mutating": false
+    },
+    {
+      "name": "unifi_unblock",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "unifi_wlan_set",
+      "server": "homelab-mcp-control",
+      "mutating": true
+    },
+    {
+      "name": "unifi_wlans",
+      "server": "homelab-mcp-network",
+      "mutating": false
+    }
+  ]
+}

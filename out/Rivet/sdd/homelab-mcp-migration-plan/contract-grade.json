@@ -1,0 +1,126 @@
+{
+  "workflow": "homelab-mcp-migration-plan",
+  "step": 8,
+  "graded_utc": "2026-05-01T09:46:00Z",
+  "must_pass": [
+    {
+      "id": "MP-1",
+      "title": "Inventory fidelity (133/29 verbatim)",
+      "result": "PASS",
+      "evidence": "docs/migration/tool-inventory.json totals = {tools:133, writes:29, readonly:104}; validator T2 green; source HEAD 0727116cc821 reproduces same."
+    },
+    {
+      "id": "MP-2",
+      "title": "Total domain coverage (set equality, disjoint per server)",
+      "result": "PASS",
+      "evidence": "validator T3 (set-equality) and T4 (pairwise disjoint) both pass; per-server {platform:51, media:30, network:7, homeauto:16, control:29} = 133."
+    },
+    {
+      "id": "MP-3",
+      "title": "Write-tool isolation",
+      "result": "PASS",
+      "evidence": "validator T5 + T7: every WRITE_TOOLS member is on homelab-mcp-control; no readonly server has any of the 29 write tools."
+    },
+    {
+      "id": "MP-4",
+      "title": "Phased rollout with explicit gates",
+      "result": "PASS",
+      "evidence": "design.md \u00a77 declares Phases 0..5 with G1..G5 per server; \u00a77.1 makes Phase 5 entry-criterion script-asserted via phase-status.json."
+    },
+    {
+      "id": "MP-5",
+      "title": "Compatibility monolith retained",
+      "result": "PASS",
+      "evidence": "design.md \u00a71 fallback diagram, \u00a77 phases keep monolith running through Phases 0\u20134; cutover checklist per server in \u00a77 + \u00a77.2."
+    },
+    {
+      "id": "MP-6",
+      "title": "Adversarial review clean (no critical, highs mitigated)",
+      "result": "PASS",
+      "evidence": "as-findings.json: 0 critical, 4 high all mitigated in spec/design (AS-1\u2192Q4, AS-2\u2192G4 request-shape parity, AS-3\u2192phase-status.json, AS-4\u2192Phase 4 rotation policy)."
+    },
+    {
+      "id": "MP-7",
+      "title": "No source-repo writes",
+      "result": "PASS",
+      "evidence": "git status in C:\\src\\homelab is clean except pre-existing untracked out/Rivet/* directories present before this SDD started; no file was modified in the source repo by this workflow."
+    },
+    {
+      "id": "MP-8",
+      "title": "Public migration-plan.md present",
+      "result": "PASS",
+      "evidence": "docs/migration/migration-plan.md created on feat/migration-plan; mirrors design \u00a72.1 split table."
+    },
+    {
+      "id": "MP-9",
+      "title": "rivet verify --scope branch exits 0",
+      "result": "PENDING",
+      "evidence": "Run at Step 9; this grade artifact is finalised after Step 9 verification."
+    }
+  ],
+  "must_fail": [
+    {
+      "id": "MF-1",
+      "title": "Sum != 133, duplicates, or unknown tools",
+      "rejection_proven": true,
+      "evidence": "validator T2/T3/T4 reject these; design.md \u00a712 T8/T10/T11 enumerate the rejections."
+    },
+    {
+      "id": "MF-2",
+      "title": "Write tool on readonly server",
+      "rejection_proven": true,
+      "evidence": "validator T5/T7 reject; design.md \u00a712 T9/T12 enumerate."
+    },
+    {
+      "id": "MF-3",
+      "title": "Delete monolith before any split passes",
+      "rejection_proven": true,
+      "evidence": "design.md \u00a77.1 Phase-5 entry-criterion script asserts len(phases)==5 and all gates green AND OpenWebUI grep returns zero matches; impossible to satisfy before any split passes."
+    },
+    {
+      "id": "MF-4",
+      "title": "Big-bang cutover",
+      "rejection_proven": true,
+      "evidence": "design.md \u00a77 explicitly phased; spec.md R5 retains monolith; nothing in plan proposes a single switch."
+    },
+    {
+      "id": "MF-5",
+      "title": "Control without isolation",
+      "rejection_proven": true,
+      "evidence": "design.md \u00a75 control-server row mandates separate Service, second label gate, bearer token; \u00a76 G5 requires NetworkPolicy isolation gate."
+    },
+    {
+      "id": "MF-6",
+      "title": "Unresolved critical adversarial findings",
+      "rejection_proven": true,
+      "evidence": "as-findings.json summary: critical=0; verdict=\"PROCEED with edits\"."
+    },
+    {
+      "id": "MF-7",
+      "title": "Missing SDD artifacts",
+      "rejection_proven": true,
+      "evidence": "All 5 content artifacts (context.json, contract.md, spec.md, design.md, as-findings.json) exist. Per the contract revision, verify-result.json / build-result.json / contract-grade.json / f10-compliance.md are step-produced artifacts not preconditions for MF-7; verify-result.json and build-result.json already exist; f10-compliance.md is produced by Step 10."
+    },
+    {
+      "id": "MF-8",
+      "title": "PR modifies source repo",
+      "rejection_proven": true,
+      "evidence": "git -C C:\\src\\homelab status -s shows only pre-existing untracked out/Rivet/* directories (none from this SDD)."
+    },
+    {
+      "id": "MF-9",
+      "title": "Unannotated 'verified working' claims",
+      "rejection_proven": true,
+      "evidence": "Phase 0 ships no per-tool verification; docs/migration/verification/ is reserved for phase SDDs and is not populated here."
+    }
+  ],
+  "summary": {
+    "must_pass_total": 9,
+    "must_pass_pass": 8,
+    "must_pass_pending": 1,
+    "must_fail_total": 9,
+    "must_fail_proven": 9
+  },
+  "result": "PROVISIONAL_PASS",
+  "rationale": "8/9 MUST PASS criteria are green at Step 8. MP-9 (rivet verify --scope branch) is intentionally graded at Step 9; this artifact will be re-read by the verify gate."
+}

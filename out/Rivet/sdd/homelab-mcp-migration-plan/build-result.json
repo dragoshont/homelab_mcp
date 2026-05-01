@@ -1,0 +1,36 @@
+{
+  "step": 7,
+  "name": "Build + Test",
+  "workflow": "homelab-mcp-migration-plan",
+  "ran_utc": "2026-05-01T09:45:00Z",
+  "artifacts": [
+    {
+      "kind": "validator",
+      "command": "python tools/validate_inventory.py --source-repo C:\\src\\homelab",
+      "exit_code": 0,
+      "stdout": "OK: 133/29/104 verified at source HEAD 0727116cc821",
+      "asserts": [
+        "T1 schema",
+        "T2 counts (133/29/104)",
+        "T3 set-equality scanned vs inventory",
+        "T4 pairwise disjoint per server",
+        "T5 write-isolation",
+        "T6 strict decorator scan",
+        "T7 WRITE_TOOLS == inventory mutating set",
+        "deterministic prefix-to-server assignment cross-check"
+      ]
+    },
+    {
+      "kind": "source-repo-baseline",
+      "command": "PYTHONPATH=C:\\src\\homelab\\mcp\\src python -m pytest C:\\src\\homelab\\mcp\\tests -q",
+      "exit_code": 0,
+      "summary": "102 passed in 0.71s",
+      "note": "Informational; this SDD did not modify the source repo."
+    }
+  ],
+  "build": {
+    "ran": false,
+    "rationale": "Phase 0 changes are docs (.md), data (.json), and one helper script. There is no Python package to compile or container to build in this PR. The validator is the real Step-7 gate (design.md \u00a79.1)."
+  },
+  "result": "PASS"
+}

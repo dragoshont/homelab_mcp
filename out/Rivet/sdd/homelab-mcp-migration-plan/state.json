@@ -1,0 +1,118 @@
+{
+  "schemaVersion": "1.1",
+  "name": "homelab-mcp-migration-plan",
+  "issue": 0,
+  "createdAt": "2026-04-28T14:55:42.5541838\u002B00:00",
+  "currentStep": 9,
+  "steps": [
+    {
+      "id": 0,
+      "name": "Flight Precheck",
+      "artifact": "state.json",
+      "instructions": "Create feature branch. Verify workspace is clean.",
+      "status": "done",
+      "completedAt": "2026-04-28T14:55:42.5550940\u002B00:00"
+    },
+    {
+      "id": 1,
+      "name": "Context Preflight",
+      "artifact": "context.json",
+      "instructions": "Run rivet context --intent code and save the contract to context.json. Review workflow recommendations, deterministic knowledge, and completeness before writing code.",
+      "status": "done",
+      "completedAt": "2026-04-28T14:57:37.2070216\u002B00:00",
+      "evidence": "Generated context.json with rivet context --intent code; collector found GitHub repo context and no solutions, expected for a fresh Python MCP repo."
+    },
+    {
+      "id": 2,
+      "name": "Verify Contract",
+      "artifact": "contract.md",
+      "instructions": "Write MUST PASS, MUST FAIL, and Integration Points. Save to contract.md.",
+      "status": "done",
+      "completedAt": "2026-05-01T09:22:40.2922346\u002B00:00",
+      "evidence": "Authored contract.md with MUST PASS (9), MUST FAIL (9), Integration Points table, and explicit out-of-scope. Contract enforces 133/29 inventory parity, write-tool isolation, phased rollout, monolith retention, no source-repo writes."
+    },
+    {
+      "id": 3,
+      "name": "Spec/PRD",
+      "artifact": "spec.md",
+      "instructions": "Write specification and design document with measurable acceptance criteria. Save to spec.md and design.md.",
+      "status": "done",
+      "completedAt": "2026-05-01T09:26:27.7458984\u002B00:00",
+      "evidence": "Authored spec.md (executive summary, current state with verified 133/29 numbers, 7 functional \u002B 3 non-functional \u002B 3 constraint requirements, 7 risks) and design.md (5-server split table summing to 133/29/104, console scripts, transport/security per server, 5 named acceptance gates G1-G5, 5-phase rollout with rollback, 7 risk mitigations, tool-inventory.json schema)."
+    },
+    {
+      "id": 4,
+      "name": "Adversarial Spec",
+      "gate": "spec-gate",
+      "artifact": "as-findings.json",
+      "instructions": "Attack spec with AS-001..AS-008. Save findings to as-findings.json.",
+      "status": "done",
+      "completedAt": "2026-05-01T09:35:35.5528207\u002B00:00",
+      "evidence": "AS-1..14 reviewed. 4 highs (AS-1/2/3/4) and 7 mediums \u002B 3 lows mitigated by spec/design/contract edits: contract MUST-PASS #2 strengthened to set-equality; spec C2 allows re-pin via inventory-history.json; spec out-of-scope adds source-repo CI as separate post-merge PR; design G4 control row redefined as request-shape parity (no live mutation); design auth softened (static bearer from K8s Secret, rotation policy declared in Phase 4); design 7.1 phase-status.json append-only tracker \u002B Phase 5 entry-criterion script \u002B OpenWebUI grep gate; design 7.2 OpenWebUI overlap test as Phase 1 first deliverable; design 7.3 Phase 3 locked core version; design RK-7 notes gitleaks upgrade in Phase 1; design 9 strict mode for unrecognised decorators; design 9.1 validate_inventory.py as Phase 0 Step 7 real gate; design 9.2 hidden-mutation scan deferred to Phase 1; Q4/Q5/Q6 added to design 11. Zero criticals; verdict PROCEED with edits respected."
+    },
+    {
+      "id": 5,
+      "name": "Implement",
+      "gate": "implement-gate",
+      "instructions": "HUMAN REVIEW GATE: Review the spec, contract, and adversarial findings before proceeding. Run \u0027rivet sdd step --approve\u0027 to begin implementation.",
+      "status": "done",
+      "completedAt": "2026-05-01T09:41:01.3118649\u002B00:00",
+      "evidence": "Phase 0 deliverables created: docs/migration/migration-plan.md, docs/migration/tool-inventory.json (51/30/7/16/29=133, 29 writes), docs/migration/phase-status.json \u002B inventory-history.json (append-only seeds), tools/validate_inventory.py. Validator green: 133/29/104. Contract updated with MP-1..9 / MF-1..9 IDs."
+    },
+    {
+      "id": 6,
+      "name": "Doc Scaffolding",
+      "gate": "doc-gate",
+      "instructions": "Update or scaffold documentation for the configured target(s). Uncommitted .md changes on the mapped target path are required.",
+      "status": "done",
+      "completedAt": "2026-05-01T09:41:11.1223013\u002B00:00",
+      "evidence": "Public migration-plan.md scaffolded at docs/migration/migration-plan.md (uncommitted, .md file change present in working tree).; Auto-scaffolded 1 doc file(s)"
+    },
+    {
+      "id": 7,
+      "name": "Build \u002B Test",
+      "artifact": "build-result.json",
+      "instructions": "Run build and tests. Save results to build-result.json.",
+      "status": "done",
+      "completedAt": "2026-05-01T09:41:53.6388146\u002B00:00",
+      "evidence": "build-result.json: validator exit 0 (133/29/104), source-repo pytest 102 passed baseline. No build to run (docs\u002BJSON\u002Bscript only)."
+    },
+    {
+      "id": 8,
+      "name": "Grade Contract",
+      "artifact": "contract-grade.json",
+      "instructions": "Grade each MUST PASS/FAIL item. Save to contract-grade.json.",
+      "status": "done",
+      "completedAt": "2026-05-01T09:42:48.2778378\u002B00:00",
+      "evidence": "Graded MP-1..9 (8 PASS, 1 PENDING for verify) and MF-1..9 (all rejections proven)."
+    },
+    {
+      "id": 9,
+      "name": "Adversarial Verify",
+      "gate": "verify-gate",
+      "artifact": "verify-result.json",
+      "instructions": "CLI runs rivet verify --scope branch automatically. Triple adversarial required.",
+      "status": "pending"
+    },
+    {
+      "id": 10,
+      "name": "F10 Compliance",
+      "artifact": "f10-compliance.md",
+      "instructions": "Auto-generated by rivet sdd status.",
+      "status": "pending"
+    }
+  ],
+  "wikiRepoPath": "C:\\src\\upgrade-assistant-wiki",
+  "rigor": "full",
+  "docTargets": [
+    {
+      "type": "feature",
+      "name": "homelab-mcp-migration-plan"
+    }
+  ],
+  "skipCount": 0,
+  "trackedFiles": [],
+  "trackedTests": [],
+  "specValidated": true,
+  "checksum": "f62a65692f56dcf248170274c5f288834161c686f41f8fc26f0f4abc7896c0a0"
+}
