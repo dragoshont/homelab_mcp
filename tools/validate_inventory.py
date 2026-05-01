@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Phase 0 inventory validator (design.md ss9.1, 12).
 
-Validates docs/migration/tool-inventory.json against the source repo at the
-pinned commit. Run from this repo's root.
+Validates docs/migration/tool-inventory.json against the source repo's
+working-tree HEAD. The pinned source_commit in the inventory is advisory:
+if HEAD differs the validator prints a warning and continues (drift
+is caught by T3 set-equality, not by commit equality).
 
 Usage:
-    python tools/validate_inventory.py [--source-repo PATH] [--commit SHA]
+    python tools/validate_inventory.py --source-repo PATH [--commit SHA]
+
+--source-repo is REQUIRED (no platform-specific default).
 
 Exits 0 on success. Exits non-zero with a diff on any failure.
 
@@ -103,10 +107,26 @@ class ValidationError(Exception):
     pass
 
 
+def _read_source_file(path: Path, label: str) -> str:
+    """Read a source file from the homelab repo, raising ValidationError on
+    any IO/parse problem (Copilot review #2). The validator promises a
+    `FAIL: ...` line, never a raw traceback.
+    """
+    if not path.exists():
+        raise ValidationError(f"{label} not found: {path}")
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        raise ValidationError(f"failed to read {label} {path}: {e}") from e
+
+
 def scan_server_tools(server_py: Path) -> list[str]:
     """AST-scan server.py for @mcp.tool decorators, strict mode."""
-    src = server_py.read_text(encoding="utf-8")
-    module = ast.parse(src)
+    src = _read_source_file(server_py, "server.py")
+    try:
+        module = ast.parse(src)
+    except SyntaxError as e:
+        raise ValidationError(f"server.py {server_py} failed to parse: {e}") from e
     tools: list[str] = []
     for node in module.body:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -181,26 +201,42 @@ def _extract_write_tools_value(value: ast.expr | None) -> list[str] | None:
     """Pull tool names from any of the supported WRITE_TOOLS RHS forms.
 
     Supported (verify findings ADV-002 / ADV-008 high):
-      - frozenset({"a", "b"}) / set({"a", "b"}) / tuple(["a", "b"])
+      - frozenset({"a", "b"}) / set({"a", "b"}) / tuple(["a", "b"]) / list(["a", "b"])
       - {"a", "b"} (bare set literal)
       - ["a", "b"] (bare list literal)
       - ("a", "b") (bare tuple literal)
     Both ast.Assign and ast.AnnAssign reach here.
+
+    Copilot review #5 finding: explicitly restrict accepted call forms to
+    `frozenset` / `set` / `tuple` / `list`. Previously ANY call wrapping a
+    set literal was accepted (e.g. `foo({...})` would have been treated as
+    a valid WRITE_TOOLS form), letting an unsupported runtime expression
+    pass through.
     """
     if value is None:
         return None
-    # frozenset({...}) / set({...}) / tuple([...]) form.
-    if isinstance(value, ast.Call) and value.args:
-        names = _extract_set_constants(value.args[0])
-        if names is not None:
-            return names
+    # Recognised builtin constructors that take a single iterable arg.
+    _ALLOWED_CALL_NAMES = {"frozenset", "set", "tuple", "list"}
+    if isinstance(value, ast.Call):
+        # Only accept Name calls (e.g. frozenset(...)), not Attribute calls
+        # (e.g. typing.FrozenSet(...) or some_module.frozenset(...)).
+        func = value.func
+        if isinstance(func, ast.Name) and func.id in _ALLOWED_CALL_NAMES and value.args:
+            names = _extract_set_constants(value.args[0])
+            if names is not None:
+                return names
+        # Other call forms are NOT accepted; fall through to None.
+        return None
     # Bare set/list/tuple literal form.
     return _extract_set_constants(value)
 
 
 def scan_write_tools(policy_py: Path) -> list[str]:
-    src = policy_py.read_text(encoding="utf-8")
-    module = ast.parse(src)
+    src = _read_source_file(policy_py, "policy.py")
+    try:
+        module = ast.parse(src)
+    except SyntaxError as e:
+        raise ValidationError(f"policy.py {policy_py} failed to parse: {e}") from e
     # Only consider module-level assignments. ast.walk() would dive into
     # function/class bodies and let a nested-scope `WRITE_TOOLS = ...`
     # silently shadow an unrecognised module-level form (verify run #2
@@ -294,7 +330,21 @@ def validate(source_repo: Path, expected_commit: str | None = None) -> int:
     if not inventory_path.exists():
         raise ValidationError(f"inventory not found: {inventory_path}")
 
-    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    # Copilot review #1: convert IO/encoding/JSON failures into
+    # ValidationError so the user always sees a `FAIL: ...` line instead
+    # of a raw traceback.
+    try:
+        inventory_text = inventory_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        raise ValidationError(f"failed to read inventory {inventory_path}: {e}") from e
+    try:
+        inventory = json.loads(inventory_text)
+    except json.JSONDecodeError as e:
+        raise ValidationError(f"failed to parse inventory JSON {inventory_path}: {e}") from e
+    if not isinstance(inventory, dict):
+        raise ValidationError(
+            f"T1 schema: inventory must be a JSON object, got {type(inventory).__name__}"
+        )
 
     # T1: schema (light-weight check; required keys, types).
     required_keys = {"source_commit", "captured_utc", "totals", "servers", "tools"}
@@ -343,6 +393,12 @@ def validate(source_repo: Path, expected_commit: str | None = None) -> int:
                 )
             seen_names.add(name)
     for t in inventory["tools"]:
+        # Copilot review #2: catch non-dict entries here so we raise a
+        # controlled T1 error instead of an AttributeError on `.keys()`.
+        if not isinstance(t, dict):
+            raise ValidationError(
+                f"T1 schema: tool entry must be an object, got {type(t).__name__}"
+            )
         if not {"name", "server", "mutating"} <= t.keys():
             raise ValidationError(f"T1 schema: tool entry missing required keys: {t}")
         # Verify run #2 finding ADV-004 high: a non-string name later

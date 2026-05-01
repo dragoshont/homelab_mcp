@@ -89,9 +89,11 @@ homelab_mcp/                   ← this repo
 │   ├── homelab-mcp-media/
 │   ├── homelab-mcp-network/
 │   ├── homelab-mcp-homeauto/
-│   └── homelab-mcp-control/
-├── containers/                ← per-server Dockerfile
-└── deploy/                    ← reference K8s manifests (no homelab specifics)
+│   ├── homelab-mcp-control/
+│   └── homelab-mcp-bundle/    ← config-driven multi-server runner (no new tools)
+├── containers/                ← per-server Dockerfile + bundle Dockerfile
+├── deploy/                    ← reference K8s manifests (no homelab specifics)
+└── .github/workflows/         ← per-server + bundle CI (matrix build → GHCR)
 ```
 
 This PR only creates `docs/migration/`. The `packages/`, `containers/`,
@@ -105,15 +107,176 @@ PyPI/installation simple and lets contributors install only what they need.
 
 | Server | Console script | Image tag (planned) |
 |--------|----------------|----------------------|
-| platform | `homelab-mcp-platform` | `ghcr.io/dragoshont/homelab-mcp-platform:<sha>` |
-| media | `homelab-mcp-media` | `ghcr.io/dragoshont/homelab-mcp-media:<sha>` |
-| network | `homelab-mcp-network` | `ghcr.io/dragoshont/homelab-mcp-network:<sha>` |
-| homeauto | `homelab-mcp-homeauto` | `ghcr.io/dragoshont/homelab-mcp-homeauto:<sha>` |
-| control | `homelab-mcp-control` | `ghcr.io/dragoshont/homelab-mcp-control:<sha>` |
+| platform | `homelab-mcp-platform` | `ghcr.io/dragoshont/homelab-mcp-platform:<sha>` + `dragoshont/homelab-mcp-platform:<semver>` (releases) |
+| media | `homelab-mcp-media` | `ghcr.io/dragoshont/homelab-mcp-media:<sha>` + `dragoshont/homelab-mcp-media:<semver>` (releases) |
+| network | `homelab-mcp-network` | `ghcr.io/dragoshont/homelab-mcp-network:<sha>` + `dragoshont/homelab-mcp-network:<semver>` (releases) |
+| homeauto | `homelab-mcp-homeauto` | `ghcr.io/dragoshont/homelab-mcp-homeauto:<sha>` + `dragoshont/homelab-mcp-homeauto:<semver>` (releases) |
+| control | `homelab-mcp-control` | `ghcr.io/dragoshont/homelab-mcp-control:<sha>` + `dragoshont/homelab-mcp-control:<semver>` (releases) |
+| **bundle (all-in-one)** | `homelab-mcp-bundle --config <path>` | `ghcr.io/dragoshont/homelab-mcp-bundle:<sha>` + `dragoshont/homelab-mcp-bundle:<semver>` (releases) |
 | (existing) monolith | `homelab-mcp` (unchanged) | `homelab-mcp-proxy:1.1.0` |
 
 The monolith's `homelab-mcp` console script and its image stay in the source
 repo and remain operational throughout.
+
+### 4.1 The bundle image (config-driven multi-server)
+
+`homelab-mcp-bundle` is a deployment convenience, **not** a new architectural
+layer:
+
+- It depends on `homelab-mcp-core` and on each of the 5 server packages.
+- It contains **zero tool implementations of its own**. The same 133 tools
+  live in the same 5 server packages; the bundle just imports and exposes
+  them.
+- Its only job is to read a config file and start a subset of the 5 servers
+  in the same process tree (each on its own port / mount path) so a single
+  container can replace the existing monolith for users who don't want to
+  run 5 Pods.
+
+This preserves the trust-boundary value of the split (each server is still
+a distinct MCP endpoint with its own tool set, OpenWebUI registers each
+separately) while keeping operational complexity comparable to today's
+monolith for small homelab/dev users.
+
+**Config schema (`bundle.yaml`)** — minimal, declarative, validated at startup:
+
+```yaml
+# Each entry maps to one of the 5 server packages.
+# Disabled servers are NOT loaded; their tools are not in the registered set.
+servers:
+  platform:
+    enabled: true
+    mount: /mcp/platform     # path under the bundle's HTTP root
+    port: null               # null = share bundle's port; int = bind dedicated port
+  media:
+    enabled: true
+    mount: /mcp/media
+  network:
+    enabled: false           # operator opted out
+  homeauto:
+    enabled: true
+    mount: /mcp/homeauto
+  control:
+    enabled: false           # control NEVER auto-enabled; operator must set true
+    mount: /mcp/control
+    auth:
+      bearer_token_env: HOMELAB_MCP_CONTROL_TOKEN  # required when enabled=true
+bundle:
+  bind: 0.0.0.0
+  port: 8080
+  audit_sink:                # resolves Q5 for the bundle case
+    type: file
+    path: /var/log/homelab-mcp/bundle-audit.log
+```
+
+**Bundle-specific gates (extend G1–G5 in §6 for the bundle image):**
+
+| Bundle gate | Check |
+|-------------|-------|
+| **B1** | Bundle with `enabled: true` for all 5 servers exposes exactly 133 tools (set-equality vs `tool-inventory.json`) — proves the bundle is not silently filtering tools. |
+| **B2** | Bundle with `control.enabled: false` exposes exactly 104 tools and zero entries from `WRITE_TOOLS` — proves opt-in works. |
+| **B3** | Bundle with `control.enabled: true` and `bearer_token_env` unset **fails to start** with a clear error — proves auth is enforced for the in-process control server, same as the dedicated control server. |
+| **B4** | Two bundles started with disjoint configs (e.g., one with `media+platform`, one with `network+homeauto+control`) together expose the same tool set as one all-on bundle — proves the split is composable. |
+
+**When to use which deployment shape:**
+
+| Shape | Best for | Cost |
+|-------|----------|------|
+| 5 separate Pods (per-server images) | Production multi-tenant; want per-server resource limits, separate NetworkPolicies, independent rollouts | 5× scheduling overhead |
+| 1 bundle Pod (bundle image, all servers enabled) | Solo homelab; matches today's monolith UX; one container to manage | Loses per-server NetworkPolicy granularity within the Pod |
+| 1 bundle Pod (subset enabled) | Edge / minimal install (e.g., "only media+platform") | — |
+| Mixed (bundle for RO + dedicated control Pod) | Recommended default for homelab: bundle the 4 RO servers, run control as its own Pod with stricter NetworkPolicy | Two Pods, but cleanly separates control trust boundary |
+
+The bundle is **delivered after Phase 4** (or in parallel with Phase 4): it
+cannot exist before all 5 server packages exist. A new "Phase 4.5: bundle"
+SDD packages and ships it.
+
+### 4.2 CI / image build & release strategy (resolves Q7, Q8)
+
+Two workflows live at `.github/workflows/`:
+
+**A. `build-images.yml` — every push to `main`:**
+
+```yaml
+# pseudocode shape - full file lands in Phase 1
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/homelab-mcp-${{ matrix.server }}/**'
+      - 'packages/homelab-mcp-core/**'   # any core change rebuilds all
+      - 'containers/Dockerfile.${{ matrix.server }}'
+strategy:
+  matrix:
+    server: [platform, media, network, homeauto, control, bundle]
+permissions:
+  contents: read
+  packages: write     # GHCR push only; Docker Hub NOT touched on every push
+```
+
+Pushes to `ghcr.io/dragoshont/homelab-mcp-{server}:{git-sha}` and
+`:main`. Path filters skip rebuilds for unrelated changes. **Docker Hub
+is NOT pushed from this workflow** — every-commit publishing to a public
+registry creates noise and increases the secret-leak blast radius.
+
+**B. `release-images.yml` — GitHub release / tag `v*.*.*`:**
+
+```yaml
+on:
+  release:
+    types: [published]   # only when an operator clicks "publish release"
+  workflow_dispatch:     # manual fallback for re-publishing a release
+strategy:
+  matrix:
+    server: [platform, media, network, homeauto, control, bundle]
+permissions:
+  contents: read
+  packages: write
+```
+
+This workflow:
+1. Reads the release tag (e.g. `v0.4.1`), validates semver.
+2. Pulls the GHCR image tagged with the commit SHA the release points to
+   (the image was already built by `build-images.yml`); does NOT rebuild.
+3. Re-tags it as `:v0.4.1`, `:0.4` (minor track), `:latest` and pushes to
+   both GHCR and Docker Hub.
+4. Logs in to Docker Hub via `docker/login-action` using
+   `secrets.DOCKERHUB_USERNAME` / `secrets.DOCKERHUB_TOKEN`.
+5. Updates the Docker Hub repo's short description / README from
+   `containers/{server}.dockerhub.md` (one file per image).
+6. Generates and attaches the SBOM and a cosign signature to both registries.
+
+**Two-registry rationale:**
+
+| Registry | Role | Pushed when |
+|----------|------|-------------|
+| `ghcr.io/dragoshont/homelab-mcp-{server}` | CI artifact + canonical source for releases | Every push to `main` |
+| `dragoshont/homelab-mcp-{server}` (Docker Hub) | OSS discoverability, default pull URL for community users | Only on `release: published` |
+
+Users who follow the project pull from Docker Hub by default; users who
+want the latest unreleased build pull from GHCR (`:main` or `:{sha}`).
+The Docker Hub side is intentionally slower-moving and tagged.
+
+**Required repo secrets (added by operator before the workflow can
+succeed; absence does NOT break the GHCR-only path):**
+
+| Secret | Source | Scope |
+|--------|--------|-------|
+| `DOCKERHUB_USERNAME` | Operator's Docker Hub login | Public repo write |
+| `DOCKERHUB_TOKEN` | Docker Hub Account Settings → Personal access tokens → Public Repo Read & Write, 1-year expiry, name `homelab_mcp_ghactions` | Per-token, rotatable |
+
+The `release-images.yml` workflow's first step is `if:
+${{ secrets.DOCKERHUB_TOKEN != '' }}` so a release without the secrets
+falls back to GHCR-only publishing with a warning rather than failing.
+
+**Security-relevant:** the workflow uses
+`permissions: { packages: write, contents: read }` only in the publish
+step; build/test runs with `read-all`. The composite action pins all base
+images by digest, not tag, so a base-image tag re-point cannot silently
+change the published image content. Phase 1 SDD locks the digest set.
+
+**Composite action** at `.github/actions/build-mcp-image/` is shared by
+all matrix legs in both workflows to keep the workflow files small and
+the build/test/scan logic in one place.
 
 ## 5. Transport and security
 
@@ -312,6 +475,19 @@ this plan.
   folding it into platform with an explicit `unifi.*` tool naming prefix
   preserved for trust-boundary clarity. Decision recorded in the Phase 3
   retrospective.
+- **Q7 (CI / image build strategy — resolved in §4.2):** Two-workflow split:
+  `build-images.yml` (matrix; every push to main; GHCR only) and
+  `release-images.yml` (matrix; on GitHub release; promotes a GHCR-tagged
+  image to Docker Hub + GHCR with semver tags). Phase 1 SDD lands both
+  workflows + the shared composite action and pins the base-image digest
+  set.
+- **Q8 (Docker Hub publishing — resolved in §4.2):** Yes, on releases only,
+  via the `release-images.yml` workflow. Docker Hub is the
+  community-facing default (tagged, slower-moving); GHCR is the canonical
+  CI artifact (every-commit). Both registries get the same content for a
+  given release tag (re-tag, not rebuild). Required secrets
+  (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) are operator-provided; missing
+  secrets gracefully degrade the release workflow to GHCR-only publishing.
 
 
 ## 12. Test Plan
