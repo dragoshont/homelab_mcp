@@ -1,0 +1,559 @@
+{
+  "modelsUsed": [
+    "claude-opus-4.6",
+    "gpt-5.3-codex"
+  ],
+  "durationSeconds": 266.5156162,
+  "highConfidenceCount": 0,
+  "deterministicFindingCount": 0,
+  "totalFindings": 24,
+  "findings": [
+    {
+      "rule": "BUG-005",
+      "severity": "High",
+      "file": "",
+      "scenario": "qBittorrent returns HTTP 200 with body \u0027Fails.\u0027 on invalid credentials",
+      "expected": "_login() detects the failed authentication and raises or keeps _logged_in=False",
+      "actual": "_login() only calls raise_for_status() (passes on 200), sets _logged_in=True unconditionally; subsequent requests get 403, trigger re-login, get 403 again in an infinite retry per call",
+      "testClass": "TestQbtClient",
+      "testMethod": "test_login_bad_credentials_not_marked_logged_in",
+      "testBody": "def test_login_bad_credentials_not_marked_logged_in(httpx_mock):\n    httpx_mock.add_response(url=\u0027http://qbt:8080/api/v2/auth/login\u0027, text=\u0027Fails.\u0027, status_code=200)\n    from homelab_mcp.clients import QbtClient, ServiceConfig\n    c = QbtClient(ServiceConfig(url=\u0027http://qbt:8080\u0027, username=\u0027u\u0027, password=\u0027p\u0027))\n    with pytest.raises(RuntimeError):\n        c._login()\n    assert c._logged_in is False",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "High",
+      "file": "",
+      "scenario": "HomebridgeClient._login() receives a valid 200 response that lacks \u0027access_token\u0027 key (e.g., key is \u0027token\u0027 or response is {})",
+      "expected": "_login() raises an error or sets a non-None sentinel so get() does not silently proceed with \u0027Bearer None\u0027 header",
+      "actual": "self._token = r.json().get(\u0027access_token\u0027) yields None; get() then sends \u0027Authorization: Bearer None\u0027, receives 401, retries _login() which again yields None, sends another bad request, then raises on 401 \u2014 two wasted round-trips with sensitive credentials exposed in body each time",
+      "testClass": "TestHomebridgeClient",
+      "testMethod": "test_login_missing_access_token_raises",
+      "testBody": "def test_login_missing_access_token_raises(httpx_mock):\n    httpx_mock.add_response(url=\u0027http://hb/api/auth/login\u0027, json={\u0027token\u0027: \u0027x\u0027}, status_code=200)\n    from homelab_mcp.clients import HomebridgeClient, ServiceConfig\n    c = HomebridgeClient(ServiceConfig(url=\u0027http://hb\u0027, username=\u0027u\u0027, password=\u0027p\u0027))\n    c._login()\n    assert c._token is not None, \u0027_token must not be None after successful login\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-007",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "registry.registered_tool_names accesses private attrs _tool_manager._tools; if FastMCP renames internals, function silently returns frozenset() and any compatibility test using it passes vacuously",
+      "expected": "Function raises or returns a sentinel indicating introspection failed so tests do not pass for the wrong reason",
+      "actual": "Both getattr calls fall back to None, isinstance(None, dict) is False, isinstance(None, Iterable) is False, returns frozenset() \u2014 every \u0027tool X is registered\u0027 assertion would wrongly pass if compared with \u0060\u003C=\u0060 or would need explicit non-empty guard",
+      "testClass": "TestRegistry",
+      "testMethod": "test_registered_tool_names_raises_on_incompatible_mcp",
+      "testBody": "def test_registered_tool_names_raises_on_incompatible_mcp():\n    from homelab_mcp.registry import registered_tool_names\n    result = registered_tool_names(object())  # no _tool_manager attr\n    # If this returns empty frozenset, downstream tests can never catch a real regression\n    assert result == frozenset(), \u0027silent empty is indistinguishable from broken introspection\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "BUG-001",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "ServarrClient, QbtClient, Mylar3Client, PlexClient, HomebridgeClient each instantiate httpx.Client stored in self._client but provide no close()/context-manager support",
+      "expected": "Clients implement __enter__/__exit__ or expose close() so connection pools are released on server shutdown or test teardown",
+      "actual": "httpx.Client holds open TCP connections until GC; under mcpo long-running process each re-instantiation leaks a socket pool (OS FD exhaustion on repeated config reloads)",
+      "testClass": "TestClientLifecycle",
+      "testMethod": "test_servarr_client_closes_transport",
+      "testBody": "def test_servarr_client_closes_transport():\n    from homelab_mcp.clients import ServarrClient, ServiceConfig\n    c = ServarrClient(ServiceConfig(url=\u0027http://x\u0027, api_key=\u0027k\u0027))\n    assert hasattr(c, \u0027close\u0027) or hasattr(c, \u0027__exit__\u0027), \u0027Client must be closeable to avoid FD leaks\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Mylar3Client.call() content-type sniff uses r.text.startswith((\u0027{\u0027, \u0027[\u0027)) but Mylar3 can return JSON with leading whitespace or BOM when content-type is text/html",
+      "expected": "JSON is parsed regardless of leading whitespace when content body is valid JSON",
+      "actual": "startswith check fails on \u0027 {\u2026\u0027 or \u0027\\n[\u2026\u0027; function returns raw text string instead of parsed dict/list, breaking downstream tool code that indexes into the result",
+      "testClass": "TestMylar3Client",
+      "testMethod": "test_call_json_with_leading_whitespace_parsed",
+      "testBody": "def test_call_json_with_leading_whitespace_parsed(httpx_mock):\n    httpx_mock.add_response(url=\u0027http://m/api\u0027, text=\u0027 {\u0022success\u0022: true}\u0027, headers={\u0027content-type\u0027: \u0027text/html\u0027})\n    from homelab_mcp.clients import Mylar3Client, ServiceConfig\n    c = Mylar3Client(ServiceConfig(url=\u0027http://m\u0027, api_key=\u0027k\u0027))\n    result = c.call(\u0027getComic\u0027, id=\u00271\u0027)\n    assert isinstance(result, dict), f\u0027Expected dict, got {type(result)}\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-003",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Write tool in READONLY mode: \u0060_audit(tool, {})\u0060 is called BEFORE \u0060_check_readonly(tool)\u0060, logging a false \u0027ok\u0027 entry even when the operation is rejected",
+      "expected": "In READONLY mode, only a \u0027rejected_readonly\u0027 audit entry appears; no \u0027ok\u0027 entry is logged for a blocked write",
+      "actual": "\u0060sonarr_search_missing\u0060, \u0060radarr_search_missing\u0060, \u0060lidarr_search_missing\u0060, \u0060readarr_search_missing\u0060, \u0060mylar3_search_missing\u0060, \u0060qbt_pause\u0060, \u0060qbt_resume\u0060 all emit an \u0027ok\u0027 audit BEFORE the readonly check raises, producing a misleading audit trail (compare with \u0060kube_restart\u0060 which correctly calls \u0060_check_readonly\u0060 first)",
+      "testClass": "TestReadonlyAudit",
+      "testMethod": "test_readonly_mode_does_not_emit_ok_audit_for_rejected_write",
+      "testBody": "def test_readonly_mode_does_not_emit_ok_audit_for_rejected_write(monkeypatch, tmp_path):\n    monkeypatch.setenv(\u0027HOMELAB_MCP_READONLY\u0027, \u00271\u0027)\n    audit_entries = []\n    monkeypatch.setattr(\u0027homelab_mcp.server._write_audit\u0027, lambda logger, tool, params, summary: audit_entries.append(summary))\n    import pytest\n    with pytest.raises(RuntimeError):\n        sonarr_search_missing()\n    assert \u0027ok\u0027 not in audit_entries, f\u0027False ok logged before rejection: {audit_entries}\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "\u0060mylar3_series\u0060 uses \u0060s.get(\u0027have\u0027) or s.get(\u0027Have\u0027)\u0060 \u2014 when the API returns \u0060{\u0022have\u0022: 0}\u0060, Python\u0027s \u0060or\u0060 treats 0 as falsy and discards the valid count",
+      "expected": "A series with 0 issues downloaded reports \u0060\u0022have\u0022: 0\u0060",
+      "actual": "\u00600 or s.get(\u0027Have\u0027)\u0060 evaluates to \u0060None\u0060 (or the fallback key\u0027s value), losing valid zero counts; same problem for \u0060\u0022total\u0022: s.get(\u0022total\u0022) or s.get(\u0022Total\u0022)\u0060",
+      "testClass": "TestMylar3Series",
+      "testMethod": "test_zero_have_count_not_lost",
+      "testBody": "def test_zero_have_count_not_lost(monkeypatch):\n    fake_response = {\u0027data\u0027: [{\u0027name\u0027: \u0027X-Men\u0027, \u0027year\u0027: \u00272020\u0027, \u0027publisher\u0027: \u0027Marvel\u0027, \u0027status\u0027: \u0027Active\u0027, \u0027have\u0027: 0, \u0027total\u0027: 12}]}\n    monkeypatch.setattr(\u0027homelab_mcp.server._mylar3\u0027, lambda: type(\u0027M\u0027, (), {\u0027call\u0027: lambda self, cmd: fake_response})())\n    result = mylar3_series()\n    assert result[\u0027series\u0027][0][\u0027have\u0027] == 0, f\u0022Expected 0 but got {result[\u0027series\u0027][0][\u0027have\u0027]}\u0022\n    assert result[\u0027series\u0027][0][\u0027total\u0027] == 12",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "BUG-007",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "\u0060host_journal\u0060 validates \u0060unit\u0060 with \u0060_validate_k8s_name\u0060 (regex \u0060^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$\u0060) which rejects valid systemd unit names containing uppercase, underscores, or \u0060@\u0060 characters",
+      "expected": "Legitimate unit names like \u0060NetworkManager\u0060, \u0060user@1000\u0060, \u0060my_timer.timer\u0060 are accepted and their journal is returned",
+      "actual": "These names fail validation with \u0060ValueError: Invalid unit: \u0027NetworkManager\u0027\u0060 because the K8s name regex forbids uppercase, underscores, and \u0060@\u0060; the comment \u0027# reuse \u2014 same character class\u0027 is incorrect for systemd units",
+      "testClass": "TestHostJournal",
+      "testMethod": "test_uppercase_systemd_unit_accepted",
+      "testBody": "import pytest\ndef test_uppercase_systemd_unit_accepted():\n    from homelab_mcp.server import _validate_k8s_name\n    # These are all valid systemd unit names but fail the K8s regex\n    for unit in [\u0027NetworkManager\u0027, \u0027user@1000\u0027, \u0027my_timer.service\u0027, \u0027k3s_agent\u0027]:\n        with pytest.raises(ValueError):\n            _validate_k8s_name(unit, \u0027unit\u0027)  # BUG: should NOT raise for systemd units",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "BUG-005",
+      "severity": "Low",
+      "file": "",
+      "scenario": "Module-level \u0060_clients\u0060 dict uses non-atomic check-then-set pattern (\u0060if key not in _clients: _clients[key] = ...\u0060) across all lazy-init helpers; concurrent MCP tool invocations can double-initialize clients",
+      "expected": "Each service client is initialized exactly once regardless of concurrency",
+      "actual": "Two concurrent calls to e.g. \u0060_sonarr()\u0060 can both pass the \u0060if\u0060 check and both construct a new \u0060ServarrClient\u0060, with one silently overwriting the other (leaked HTTP session / auth state)",
+      "testClass": "TestClientInit",
+      "testMethod": "test_concurrent_client_init_single_instance",
+      "testBody": "import threading\nfrom homelab_mcp.server import _clients, _sonarr\n\ndef test_concurrent_client_init_single_instance(monkeypatch):\n    _clients.clear()\n    call_count = {\u0027n\u0027: 0}\n    original_init = ServarrClient.__init__\n    def counting_init(self, *a, **kw):\n        call_count[\u0027n\u0027] \u002B= 1\n        original_init(self, *a, **kw)\n    monkeypatch.setattr(ServarrClient, \u0027__init__\u0027, counting_init)\n    threads = [threading.Thread(target=_sonarr) for _ in range(10)]\n    for t in threads: t.start()\n    for t in threads: t.join()\n    assert call_count[\u0027n\u0027] == 1, f\u0027Client initialized {call_count[\u0022n\u0022]} times (expected 1)\u0027",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-008",
+      "severity": "High",
+      "file": "",
+      "scenario": "CF_DEFAULT_ZONE is set but CF_ALLOWED_ZONES is unset/empty",
+      "expected": "cf_default_zone() raises ConfigurationError because the returned zone cannot be in an empty allowlist, matching the documented invariant: \u0027the explicit CF_DEFAULT_ZONE MUST be a member of CF_ALLOWED_ZONES\u0027",
+      "actual": "cf_default_zone() returns the explicit zone because \u0060if allowed and explicit not in allowed\u0060 short-circuits on the empty frozenset, silently bypassing the allowlist contract",
+      "testClass": "test_settings_env_contract",
+      "testMethod": "test_cf_default_zone_explicit_without_allowed_raises",
+      "testBody": "def test_cf_default_zone_explicit_without_allowed_raises(monkeypatch):\n    \u0022\u0022\u0022If CF_ALLOWED_ZONES is empty (= refuse all zones), an explicit\n    CF_DEFAULT_ZONE must not silently bypass the empty allowlist.\u0022\u0022\u0022\n    monkeypatch.delenv(\u0027CF_ALLOWED_ZONES\u0027, raising=False)\n    monkeypatch.setenv(\u0027CF_DEFAULT_ZONE\u0027, \u0027prod.example\u0027)\n    with pytest.raises(ConfigurationError):\n        cf_default_zone()",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "High",
+      "file": "",
+      "scenario": "lift_phase_0_5.py RFC1918 leak scan: line contains \u0027#\u0027 inside a string literal before a real private IP",
+      "expected": "Private IP \u0027192.168.1.1\u0027 on a line like \u0060targets = {\u0022#lobby\u0022: \u0022192.168.1.1\u0022}\u0060 is reported as a leak finding",
+      "actual": "The heuristic \u0060is_comment = \u0022#\u0022 in pre\u0060 sees the \u0027#\u0027 inside the dict key string literal and treats the entire match as a comment, silently skipping the real private IP (false negative in leak scan)",
+      "testClass": "TestLeakScan",
+      "testMethod": "test_rfc1918_not_masked_by_hash_in_string_literal",
+      "testBody": "def test_rfc1918_not_masked_by_hash_in_string_literal():\n    from tools.lift_phase_0_5 import leak_scan_file\n    from pathlib import Path\n    code = b\u0027targets = {\u0022#lobby\u0022: \u0022192.168.1.1\u0022, \u0022#garden\u0022: \u0022192.168.1.2\u0022}\\n\u0027\n    findings = leak_scan_file(Path(\u0027src/homelab_mcp/example.py\u0027), code)\n    ips_found = [f[\u0027match\u0027] for f in findings if f[\u0027kind\u0027] == \u0027rfc1918-ip\u0027]\n    assert \u0027192.168.1.1\u0027 in ips_found, (\n        f\u0027Hash inside string literal masked real private IP; findings: {findings}\u0027\n    )",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-007",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Removing _check_readonly() call from kube_restart, flux_reconcile, flux_suspend, or flux_resume function body",
+      "expected": "An entrypoint test (like SYNC_TOOL_INVOCATIONS parametrize) catches the missing readonly guard by calling the actual tool function and asserting RuntimeError",
+      "actual": "These 4 tools are in EXPECTED_WRITE_TOOLS but absent from SYNC_TOOL_INVOCATIONS; only the primitive _check_readonly(name) unit test exists, which passes even if the tool body no longer calls _check_readonly",
+      "testClass": "test_readonly_enforcement",
+      "testMethod": "test_ssh_write_tool_entrypoints_block_in_readonly",
+      "testBody": "@pytest.mark.parametrize(\u0027tool,invoke,patches\u0027, [\n    (\u0027kube_restart\u0027, lambda mod: mod.kube_restart(\u0027default\u0027, \u0027deploy/nginx\u0027), {}),\n    (\u0027flux_reconcile\u0027, lambda mod: mod.flux_reconcile(\u0027kustomization\u0027, \u0027flux-system\u0027), {}),\n    (\u0027flux_suspend\u0027, lambda mod: mod.flux_suspend(\u0027kustomization\u0027, \u0027flux-system\u0027), {}),\n    (\u0027flux_resume\u0027, lambda mod: mod.flux_resume(\u0027kustomization\u0027, \u0027flux-system\u0027), {}),\n], ids=[\u0027kube_restart\u0027,\u0027flux_reconcile\u0027,\u0027flux_suspend\u0027,\u0027flux_resume\u0027])\ndef test_ssh_write_tool_entrypoints_block_in_readonly(tool, invoke, patches, monkeypatch):\n    mod = _reload_server(readonly=True)\n    for name, value in patches.items():\n        monkeypatch.setattr(mod, name, value)\n    with pytest.raises(RuntimeError, match=\u0027readonly mode\u0027):\n        invoke(mod)",
+      "sourceModel": "claude-opus-4.6"
+    },
+    {
+      "rule": "ADV-006",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Container runs as UID 1000 and needs SSH to access host tools; Dockerfile creates /tmp/.ssh but never updates HOME after switching from root.",
+      "expected": "SSH client resolves ~/.ssh to a writable directory for UID 1000 (e.g., HOME=/tmp).",
+      "actual": "HOME remains /root in python:3.12-slim, so SSH may try /root/.ssh, causing known_hosts/identity file permission failures despite /tmp/.ssh being prepared.",
+      "testClass": "DockerRuntimeTests",
+      "testMethod": "User1000_HomeDirectoryMatchesPreparedSshPath",
+      "testBody": "[Fact] public void User1000_HomeDirectoryMatchesPreparedSshPath() { /* run container, assert id -u == 1000 and $HOME == /tmp; run ssh -G host and verify userknownhostsfile points under /tmp/.ssh */ }",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "BUG-001",
+      "severity": "High",
+      "file": "",
+      "scenario": "Tool handlers instantiate service clients per request in a long-running MCP process.",
+      "expected": "HTTP client resources are deterministically released (wrapper exposes close()/context manager and callers dispose).",
+      "actual": "ServarrClient, QbtClient, Mylar3Client, PlexClient, and HomebridgeClient create httpx.Client instances but provide no close/dispose path, risking socket/file-descriptor exhaustion under repeated instantiation.",
+      "testClass": "ClientLifecycleTests",
+      "testMethod": "RepeatedClientCreation_DoesNotLeakConnections",
+      "testBody": "[Fact] public void RepeatedClientCreation_DoesNotLeakConnections() { /* create/destroy wrappers in loop; assert wrappers implement disposal path and underlying transport closes */ }",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "A required URL env var (e.g., SONARR_URL, RADARR_URL, QBT_URL) is present but empty string due to secret injection misconfiguration.",
+      "expected": "Configuration is validated early with a clear startup error naming the missing/empty variable.",
+      "actual": "Clients accept empty URL and later build relative request URLs (e.g., \u0027/api/v3...\u0027), causing runtime httpx UnsupportedProtocol failures during tool execution.",
+      "testClass": "ConfigurationValidationTests",
+      "testMethod": "EmptyServiceUrl_FailsFastWithActionableMessage",
+      "testBody": "[Fact] public void EmptyServiceUrl_FailsFastWithActionableMessage() { /* set SONARR_URL=\u0027\u0027; constructing/using client should throw explicit config error, not late UnsupportedProtocol */ }",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-008",
+      "severity": "Critical",
+      "file": "",
+      "scenario": "kube_image_can_pull creates a pod with \u0060/bin/true\u0060 and waits for \u0060condition=Ready\u0060.",
+      "expected": "If the image is pullable, the tool should return \u0060can_pull: true\u0060 even when the pod exits quickly with \u0060Succeeded\u0060.",
+      "actual": "Short-lived pods often never become Ready before completion, so \u0060kubectl wait ... condition=Ready\u0060 times out and returns a false negative (\u0060can_pull: false\u0060).",
+      "testClass": "KubeToolsTests",
+      "testMethod": "KubeImageCanPull_SucceededPod_IsNotFalseNegative",
+      "testBody": "def test_kube_image_can_pull_succeeded_pod(monkeypatch): ... assert kube_image_can_pull(\u0027alpine:latest\u0027)[\u0027can_pull\u0027] is True",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "High",
+      "file": "",
+      "scenario": "kube_image_present falls back to \u0060echo \u0027[]\u0027\u0060 when \u0060crictl\u0060 fails.",
+      "expected": "An empty/fallback JSON payload should be handled as no cached images (\u0060present: false\u0060) without internal parsing errors.",
+      "actual": "\u0060_json.loads(\u0027[]\u0027)\u0060 returns a list, but code unconditionally calls \u0060data.get(...)\u0060, raising an exception and returning an error payload instead of a clean negative result.",
+      "testClass": "KubeToolsTests",
+      "testMethod": "KubeImagePresent_EmptyArrayFallback_DoesNotError",
+      "testBody": "def test_kube_image_present_handles_empty_array(monkeypatch): ... assert result[\u0027present\u0027] is False and \u0027error\u0027 not in result",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-002",
+      "severity": "High",
+      "file": "",
+      "scenario": "cf_dns_list requests \u0060/dns_records\u0060 with \u0060per_page=200\u0060 once and stops.",
+      "expected": "Tool doc says \u0022List all DNS records\u0022; zones with \u003E200 records should include every page.",
+      "actual": "Only the first page is returned, silently truncating results for larger zones.",
+      "testClass": "CloudflareToolsTests",
+      "testMethod": "CfDnsList_PaginatesBeyondFirstPage",
+      "testBody": "def test_cf_dns_list_paginates(monkeypatch): ... assert result[\u0027count\u0027] == 350",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-002",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "image_list_tags slices with \u0060tags[-limit:]\u0060.",
+      "expected": "\u0060limit=0\u0060 should return zero tags (or be rejected), and negative limits should not produce surprising slices.",
+      "actual": "In Python, \u0060tags[-0:]\u0060 returns the full list, so \u0060limit=0\u0060 can dump all tags unexpectedly.",
+      "testClass": "ImageToolsTests",
+      "testMethod": "ImageListTags_LimitZero_DoesNotReturnAll",
+      "testBody": "def test_image_list_tags_limit_zero(monkeypatch): ... assert result[\u0027tags\u0027] == []",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "Dirigera lazy init caches \u0060None\u0060 in \u0060_clients[\u0027dirigera\u0027]\u0060 on any init exception.",
+      "expected": "Transient init failures should not permanently poison the cache; later calls should retry initialization.",
+      "actual": "After one transient failure, \u0060_dirigera()\u0060 returns cached \u0060None\u0060 forever, and subsequent operations fail as \u0022not configured\u0022 until process restart.",
+      "testClass": "DirigeraToolsTests",
+      "testMethod": "DirigeraInit_TransientFailure_RetriesLater",
+      "testBody": "def test_dirigera_transient_failure_not_cached_forever(monkeypatch): ... assert _dirigera() is not None on second call",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "High",
+      "file": "",
+      "scenario": "HOMELAB_MCP_AUDIT_LOG is present but empty (e.g., env var set to \u0022\u0022).",
+      "expected": "Blank optional env should fall back to ~/homelab-mcp/audit.log.",
+      "actual": "audit_log_path() returns Path(\u0022\u0022) -\u003E \u0022.\u0022, so downstream file logging can fail with IsADirectoryError when trying to open a directory as a file.",
+      "testClass": "SettingsEnvContractTests",
+      "testMethod": "AuditLogPath_BlankEnv_UsesDefault",
+      "testBody": "def test_audit_log_path_blank_env_uses_default(monkeypatch): monkeypatch.setenv(\u0027HOMELAB_MCP_AUDIT_LOG\u0027, \u0027\u0027); from homelab_mcp.settings import audit_log_path; assert str(audit_log_path()).endswith(\u0027homelab-mcp/audit.log\u0027)",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-004",
+      "severity": "Critical",
+      "file": "",
+      "scenario": "CF_DEFAULT_ZONE is set, but CF_ALLOWED_ZONES is unset/empty.",
+      "expected": "Configuration should reject this (or force membership), because contract says empty/unset CF_ALLOWED_ZONES means cf_dns_* tools must refuse all zones.",
+      "actual": "cf_default_zone() returns the explicit default zone when allowlist is empty, creating an allowlist bypass path for callers that rely on cf_default_zone().",
+      "testClass": "SettingsEnvContractTests",
+      "testMethod": "CfDefaultZone_ExplicitWithoutAllowlist_Raises",
+      "testBody": "def test_cf_default_zone_explicit_without_allowlist_raises(monkeypatch): monkeypatch.delenv(\u0027CF_ALLOWED_ZONES\u0027, raising=False); monkeypatch.setenv(\u0027CF_DEFAULT_ZONE\u0027, \u0027prod.example\u0027); from homelab_mcp.settings import cf_default_zone, ConfigurationError; import pytest; with pytest.raises(ConfigurationError): cf_default_zone()",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-003",
+      "severity": "High",
+      "file": "",
+      "scenario": "Running tools/lift_phase_0_5.py with --apply on a source repo that contains a blocking leak finding.",
+      "expected": "Blocking findings should prevent destination mutations (no files copied) or perform rollback.",
+      "actual": "Files are written during the copy loop before blocking findings are evaluated; script exits non-zero afterward but leaves partially copied/secret-bearing files in destination.",
+      "testClass": "LiftPhase05Tests",
+      "testMethod": "ApplyMode_BlockingFindings_DoesNotWriteAnyFiles",
+      "testBody": "def test_apply_mode_blocking_findings_does_not_write_any_files(tmp_path): ... # create source git repo with mcp/file.py containing private hostname; run script with --apply; assert exit_code != 0 and (tmp_path/\u0027dest\u0027/\u0027mcp\u0027).rglob(\u0027*\u0027) is empty",
+      "sourceModel": "gpt-5.3-codex"
+    },
+    {
+      "rule": "ADV-002",
+      "severity": "Medium",
+      "file": "",
+      "scenario": "High-entropy token appears in a test helper file like mcp/tests/conftest.py.",
+      "expected": "Test fixtures should not be promoted to blocking \u0022real-secret\u0022 by filename heuristic alone.",
+      "actual": "Severity downgrade logic only checks if path string contains \u0022test_\u0022; conftest.py under tests/ is treated as non-test and can be flagged \u0022real-secret\u0022, causing false blocking failures.",
+      "testClass": "LeakScanTests",
+      "testMethod": "EntropyToken_InConftest_IsNotBlocking",
+      "testBody": "def test_entropy_token_in_conftest_is_not_blocking(): from tools.lift_phase_0_5 import leak_scan_file; f = leak_scan_file(Path(\u0027mcp/tests/conftest.py\u0027), b\u0022TOKEN=\u0027AbCdEfGhIjKlMnOpQrStUvWxYz012345\u0027\u0022); assert not any(x[\u0027kind\u0027]==\u0027high-entropy-token\u0027 and x[\u0027severity\u0027]==\u0027real-secret\u0027 for x in f)",
+      "sourceModel": "gpt-5.3-codex"
+    }
+  ],
+  "deterministicFindings": [],
+  "providerDiagnostics": {
+    "requestedProvider": "copilot-sdk",
+    "effectiveProvider": "copilot-sdk",
+    "modelResolutionMode": "sdk-defaults",
+    "copilotCliPath": "C:\\Users\\dragoshont\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe",
+    "copilotCliSource": "winget",
+    "copilotCliVersion": "",
+    "sdkStartupStatus": "started",
+    "sdkStartupError": "",
+    "sdkModelInventoryStatus": "listed",
+    "sdkModelInventoryError": "",
+    "availableSdkModels": [
+      "claude-haiku-4.5",
+      "claude-opus-4.5",
+      "claude-opus-4.6",
+      "claude-opus-4.6-1m",
+      "claude-opus-4.7",
+      "claude-opus-4.7-1m-internal",
+      "claude-opus-4.7-high",
+      "claude-opus-4.7-xhigh",
+      "claude-sonnet-4",
+      "claude-sonnet-4.5",
+      "claude-sonnet-4.6",
+      "gpt-4.1",
+      "gpt-5-mini",
+      "gpt-5.2",
+      "gpt-5.2-codex",
+      "gpt-5.3-codex",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.5"
+    ],
+    "selectedSdkModels": [
+      "claude-opus-4.6",
+      "gpt-5.3-codex"
+    ],
+    "fallbackTriggered": false,
+    "fallbackReason": ""
+  },
+  "agreementMatrix": [
+    {
+      "finding": "qBittorrent returns HTTP 200 with body \u0027Fails.\u0027 on invalid credentials",
+      "rule": "BUG-005",
+      "severity": "High",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "HomebridgeClient._login() receives a valid 200 response that lacks \u0027access_token\u0027 key (e.g., key is \u0027token\u0027 or response is {})",
+      "rule": "ADV-004",
+      "severity": "High",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "registry.registered_tool_names accesses private attrs _tool_manager._tools; if FastMCP renames internals, function silently returns frozenset() and any compatibility test using it passes vacuously",
+      "rule": "ADV-007",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "ServarrClient, QbtClient, Mylar3Client, PlexClient, HomebridgeClient each instantiate httpx.Client stored in self._client but provide no close()/context-manager support",
+      "rule": "BUG-001",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Mylar3Client.call() content-type sniff uses r.text.startswith((\u0027{\u0027, \u0027[\u0027)) but Mylar3 can return JSON with leading whitespace or BOM when content-type is text/html",
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Write tool in READONLY mode: \u0060_audit(tool, {})\u0060 is called BEFORE \u0060_check_readonly(tool)\u0060, logging a false \u0027ok\u0027 entry even when the operation is rejected",
+      "rule": "ADV-003",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "\u0060mylar3_series\u0060 uses \u0060s.get(\u0027have\u0027) or s.get(\u0027Have\u0027)\u0060 \u2014 when the API returns \u0060{\u0022have\u0022: 0}\u0060, Python\u0027s \u0060or\u0060 treats 0 as falsy and discards the valid count",
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "\u0060host_journal\u0060 validates \u0060unit\u0060 with \u0060_validate_k8s_name\u0060 (regex \u0060^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$\u0060) which rejects valid systemd unit names containing uppercase, underscores, or \u0060@\u0060 characters",
+      "rule": "BUG-007",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Module-level \u0060_clients\u0060 dict uses non-atomic check-then-set pattern (\u0060if key not in _clients: _clients[key] = ...\u0060) across all lazy-init helpers; concurrent MCP tool invocations can double-initialize clients",
+      "rule": "BUG-005",
+      "severity": "Low",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "CF_DEFAULT_ZONE is set but CF_ALLOWED_ZONES is unset/empty",
+      "rule": "ADV-008",
+      "severity": "High",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "lift_phase_0_5.py RFC1918 leak scan: line contains \u0027#\u0027 inside a string literal before a real private IP",
+      "rule": "ADV-004",
+      "severity": "High",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Removing _check_readonly() call from kube_restart, flux_reconcile, flux_suspend, or flux_resume function body",
+      "rule": "ADV-007",
+      "severity": "Medium",
+      "model1": "claude-opus-4.6",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Container runs as UID 1000 and needs SSH to access host tools; Dockerfile creates /tmp/.ssh but never updates HOME after switching from root.",
+      "rule": "ADV-006",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Tool handlers instantiate service clients per request in a long-running MCP process.",
+      "rule": "BUG-001",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "A required URL env var (e.g., SONARR_URL, RADARR_URL, QBT_URL) is present but empty string due to secret injection misconfiguration.",
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "kube_image_can_pull creates a pod with \u0060/bin/true\u0060 and waits for \u0060condition=Ready\u0060.",
+      "rule": "ADV-008",
+      "severity": "Critical",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "kube_image_present falls back to \u0060echo \u0027[]\u0027\u0060 when \u0060crictl\u0060 fails.",
+      "rule": "ADV-004",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "cf_dns_list requests \u0060/dns_records\u0060 with \u0060per_page=200\u0060 once and stops.",
+      "rule": "ADV-002",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "image_list_tags slices with \u0060tags[-limit:]\u0060.",
+      "rule": "ADV-002",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Dirigera lazy init caches \u0060None\u0060 in \u0060_clients[\u0027dirigera\u0027]\u0060 on any init exception.",
+      "rule": "ADV-004",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "HOMELAB_MCP_AUDIT_LOG is present but empty (e.g., env var set to \u0022\u0022).",
+      "rule": "ADV-004",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "CF_DEFAULT_ZONE is set, but CF_ALLOWED_ZONES is unset/empty.",
+      "rule": "ADV-004",
+      "severity": "Critical",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "Running tools/lift_phase_0_5.py with --apply on a source repo that contains a blocking leak finding.",
+      "rule": "ADV-003",
+      "severity": "High",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    },
+    {
+      "finding": "High-entropy token appears in a test helper file like mcp/tests/conftest.py.",
+      "rule": "ADV-002",
+      "severity": "Medium",
+      "model1": "gpt-5.3-codex",
+      "model2": "",
+      "agentColumn": "",
+      "confirmedByMultiple": false
+    }
+  ],
+  "errors": {}
+}

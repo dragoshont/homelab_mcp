@@ -1,0 +1,298 @@
+{
+  "timestamp": "2026-05-01T15:14:44.6247399+00:00",
+  "layers": {
+    "W": {
+      "layer": "W",
+      "name": "Wiring",
+      "durationSeconds": 0.0088859,
+      "findings": []
+    },
+    "PO": {
+      "layer": "PO",
+      "name": "Document Quality",
+      "durationSeconds": 0.0032987,
+      "findings": [
+        {
+          "check": "PO-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No report found \u2014 PO layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "VA": {
+      "layer": "VA",
+      "name": "Plan vs Audit",
+      "durationSeconds": 0.0007119,
+      "findings": [
+        {
+          "check": "VA-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No JSON report found \u2014 VA layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "VC": {
+      "layer": "VC",
+      "name": "Plan vs Code",
+      "durationSeconds": 0.000221,
+      "findings": [
+        {
+          "check": "VC-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No JSON report found \u2014 VC layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "DC": {
+      "layer": "DC",
+      "name": "Obligations",
+      "durationSeconds": 0.3907919,
+      "findings": [
+        {
+          "check": "doc-sdd-doc-target",
+          "file": "tsg:phase-0.5-source-lift (Operations)",
+          "field": "Operations",
+          "missingIn": "",
+          "severity": "Warning",
+          "message": "SDD doc target unsatisfied: tsg:phase-0.5-source-lift (Operations) (no uncommitted markdown change at docs/TSGs/Operations/phase-0-5-source-lift.md)",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "ADV": {
+      "layer": "ADV",
+      "name": "Adversarial",
+      "durationSeconds": 266.5156162,
+      "findings": [
+        {
+          "check": "BUG-005",
+          "file": "TestQbtClient",
+          "field": "qBittorrent returns HTTP 200 with body \u0027Fails.\u0027 on invalid credentials",
+          "missingIn": "",
+          "severity": "High",
+          "message": "qBittorrent returns HTTP 200 with body \u0027Fails.\u0027 on invalid credentials: expected _login() detects the failed authentication and raises or keeps _logged_in=False, got _login() only calls raise_for_status() (passes on 200), sets _logged_in=True unconditionally; subsequent requests get 403, trigger re-login, get 403 again in an infinite retry per call",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestHomebridgeClient",
+          "field": "HomebridgeClient._login() receives a valid 200 response that lacks \u0027access_token\u0027 key (e.g., key is \u0027token\u0027 or response is {})",
+          "missingIn": "",
+          "severity": "High",
+          "message": "HomebridgeClient._login() receives a valid 200 response that lacks \u0027access_token\u0027 key (e.g., key is \u0027token\u0027 or response is {}): expected _login() raises an error or sets a non-None sentinel so get() does not silently proceed with \u0027Bearer None\u0027 header, got self._token = r.json().get(\u0027access_token\u0027) yields None; get() then sends \u0027Authorization: Bearer None\u0027, receives 401, retries _login() which again yields None, sends another bad request, then raises on 401 \u2014 two wasted round-trips with sensitive credentials exposed in body each time",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-007",
+          "file": "TestRegistry",
+          "field": "registry.registered_tool_names accesses private attrs _tool_manager._tools; if FastMCP renames internals, function silently returns frozenset() and any compatibility test using it passes vacuously",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "registry.registered_tool_names accesses private attrs _tool_manager._tools; if FastMCP renames internals, function silently returns frozenset() and any compatibility test using it passes vacuously: expected Function raises or returns a sentinel indicating introspection failed so tests do not pass for the wrong reason, got Both getattr calls fall back to None, isinstance(None, dict) is False, isinstance(None, Iterable) is False, returns frozenset() \u2014 every \u0027tool X is registered\u0027 assertion would wrongly pass if compared with \u0060\u003C=\u0060 or would need explicit non-empty guard",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-001",
+          "file": "TestClientLifecycle",
+          "field": "ServarrClient, QbtClient, Mylar3Client, PlexClient, HomebridgeClient each instantiate httpx.Client stored in self._client but provide no close()/context-manager support",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "ServarrClient, QbtClient, Mylar3Client, PlexClient, HomebridgeClient each instantiate httpx.Client stored in self._client but provide no close()/context-manager support: expected Clients implement __enter__/__exit__ or expose close() so connection pools are released on server shutdown or test teardown, got httpx.Client holds open TCP connections until GC; under mcpo long-running process each re-instantiation leaks a socket pool (OS FD exhaustion on repeated config reloads)",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestMylar3Client",
+          "field": "Mylar3Client.call() content-type sniff uses r.text.startswith((\u0027{\u0027, \u0027[\u0027)) but Mylar3 can return JSON with leading whitespace or BOM when content-type is text/html",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Mylar3Client.call() content-type sniff uses r.text.startswith((\u0027{\u0027, \u0027[\u0027)) but Mylar3 can return JSON with leading whitespace or BOM when content-type is text/html: expected JSON is parsed regardless of leading whitespace when content body is valid JSON, got startswith check fails on \u0027 {\u2026\u0027 or \u0027\\n[\u2026\u0027; function returns raw text string instead of parsed dict/list, breaking downstream tool code that indexes into the result",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-003",
+          "file": "TestReadonlyAudit",
+          "field": "Write tool in READONLY mode: \u0060_audit(tool, {})\u0060 is called BEFORE \u0060_check_readonly(tool)\u0060, logging a false \u0027ok\u0027 entry even when the operation is rejected",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Write tool in READONLY mode: \u0060_audit(tool, {})\u0060 is called BEFORE \u0060_check_readonly(tool)\u0060, logging a false \u0027ok\u0027 entry even when the operation is rejected: expected In READONLY mode, only a \u0027rejected_readonly\u0027 audit entry appears; no \u0027ok\u0027 entry is logged for a blocked write, got \u0060sonarr_search_missing\u0060, \u0060radarr_search_missing\u0060, \u0060lidarr_search_missing\u0060, \u0060readarr_search_missing\u0060, \u0060mylar3_search_missing\u0060, \u0060qbt_pause\u0060, \u0060qbt_resume\u0060 all emit an \u0027ok\u0027 audit BEFORE the readonly check raises, producing a misleading audit trail (compare with \u0060kube_restart\u0060 which correctly calls \u0060_check_readonly\u0060 first)",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestMylar3Series",
+          "field": "\u0060mylar3_series\u0060 uses \u0060s.get(\u0027have\u0027) or s.get(\u0027Have\u0027)\u0060 \u2014 when the API returns \u0060{\u0022have\u0022: 0}\u0060, Python\u0027s \u0060or\u0060 treats 0 as falsy and discards the valid count",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "\u0060mylar3_series\u0060 uses \u0060s.get(\u0027have\u0027) or s.get(\u0027Have\u0027)\u0060 \u2014 when the API returns \u0060{\u0022have\u0022: 0}\u0060, Python\u0027s \u0060or\u0060 treats 0 as falsy and discards the valid count: expected A series with 0 issues downloaded reports \u0060\u0022have\u0022: 0\u0060, got \u00600 or s.get(\u0027Have\u0027)\u0060 evaluates to \u0060None\u0060 (or the fallback key\u0027s value), losing valid zero counts; same problem for \u0060\u0022total\u0022: s.get(\u0022total\u0022) or s.get(\u0022Total\u0022)\u0060",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-007",
+          "file": "TestHostJournal",
+          "field": "\u0060host_journal\u0060 validates \u0060unit\u0060 with \u0060_validate_k8s_name\u0060 (regex \u0060^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$\u0060) which rejects valid systemd unit names containing uppercase, underscores, or \u0060@\u0060 characters",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "\u0060host_journal\u0060 validates \u0060unit\u0060 with \u0060_validate_k8s_name\u0060 (regex \u0060^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$\u0060) which rejects valid systemd unit names containing uppercase, underscores, or \u0060@\u0060 characters: expected Legitimate unit names like \u0060NetworkManager\u0060, \u0060user@1000\u0060, \u0060my_timer.timer\u0060 are accepted and their journal is returned, got These names fail validation with \u0060ValueError: Invalid unit: \u0027NetworkManager\u0027\u0060 because the K8s name regex forbids uppercase, underscores, and \u0060@\u0060; the comment \u0027# reuse \u2014 same character class\u0027 is incorrect for systemd units",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-005",
+          "file": "TestClientInit",
+          "field": "Module-level \u0060_clients\u0060 dict uses non-atomic check-then-set pattern (\u0060if key not in _clients: _clients[key] = ...\u0060) across all lazy-init helpers; concurrent MCP tool invocations can double-initialize clients",
+          "missingIn": "",
+          "severity": "Low",
+          "message": "Module-level \u0060_clients\u0060 dict uses non-atomic check-then-set pattern (\u0060if key not in _clients: _clients[key] = ...\u0060) across all lazy-init helpers; concurrent MCP tool invocations can double-initialize clients: expected Each service client is initialized exactly once regardless of concurrency, got Two concurrent calls to e.g. \u0060_sonarr()\u0060 can both pass the \u0060if\u0060 check and both construct a new \u0060ServarrClient\u0060, with one silently overwriting the other (leaked HTTP session / auth state)",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-008",
+          "file": "test_settings_env_contract",
+          "field": "CF_DEFAULT_ZONE is set but CF_ALLOWED_ZONES is unset/empty",
+          "missingIn": "",
+          "severity": "High",
+          "message": "CF_DEFAULT_ZONE is set but CF_ALLOWED_ZONES is unset/empty: expected cf_default_zone() raises ConfigurationError because the returned zone cannot be in an empty allowlist, matching the documented invariant: \u0027the explicit CF_DEFAULT_ZONE MUST be a member of CF_ALLOWED_ZONES\u0027, got cf_default_zone() returns the explicit zone because \u0060if allowed and explicit not in allowed\u0060 short-circuits on the empty frozenset, silently bypassing the allowlist contract",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestLeakScan",
+          "field": "lift_phase_0_5.py RFC1918 leak scan: line contains \u0027#\u0027 inside a string literal before a real private IP",
+          "missingIn": "",
+          "severity": "High",
+          "message": "lift_phase_0_5.py RFC1918 leak scan: line contains \u0027#\u0027 inside a string literal before a real private IP: expected Private IP \u0027192.168.1.1\u0027 on a line like \u0060targets = {\u0022#lobby\u0022: \u0022192.168.1.1\u0022}\u0060 is reported as a leak finding, got The heuristic \u0060is_comment = \u0022#\u0022 in pre\u0060 sees the \u0027#\u0027 inside the dict key string literal and treats the entire match as a comment, silently skipping the real private IP (false negative in leak scan)",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-007",
+          "file": "test_readonly_enforcement",
+          "field": "Removing _check_readonly() call from kube_restart, flux_reconcile, flux_suspend, or flux_resume function body",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Removing _check_readonly() call from kube_restart, flux_reconcile, flux_suspend, or flux_resume function body: expected An entrypoint test (like SYNC_TOOL_INVOCATIONS parametrize) catches the missing readonly guard by calling the actual tool function and asserting RuntimeError, got These 4 tools are in EXPECTED_WRITE_TOOLS but absent from SYNC_TOOL_INVOCATIONS; only the primitive _check_readonly(name) unit test exists, which passes even if the tool body no longer calls _check_readonly",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-006",
+          "file": "DockerRuntimeTests",
+          "field": "Container runs as UID 1000 and needs SSH to access host tools; Dockerfile creates /tmp/.ssh but never updates HOME after switching from root.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Container runs as UID 1000 and needs SSH to access host tools; Dockerfile creates /tmp/.ssh but never updates HOME after switching from root.: expected SSH client resolves ~/.ssh to a writable directory for UID 1000 (e.g., HOME=/tmp)., got HOME remains /root in python:3.12-slim, so SSH may try /root/.ssh, causing known_hosts/identity file permission failures despite /tmp/.ssh being prepared.",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-001",
+          "file": "ClientLifecycleTests",
+          "field": "Tool handlers instantiate service clients per request in a long-running MCP process.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Tool handlers instantiate service clients per request in a long-running MCP process.: expected HTTP client resources are deterministically released (wrapper exposes close()/context manager and callers dispose)., got ServarrClient, QbtClient, Mylar3Client, PlexClient, and HomebridgeClient create httpx.Client instances but provide no close/dispose path, risking socket/file-descriptor exhaustion under repeated instantiation.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "ConfigurationValidationTests",
+          "field": "A required URL env var (e.g., SONARR_URL, RADARR_URL, QBT_URL) is present but empty string due to secret injection misconfiguration.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "A required URL env var (e.g., SONARR_URL, RADARR_URL, QBT_URL) is present but empty string due to secret injection misconfiguration.: expected Configuration is validated early with a clear startup error naming the missing/empty variable., got Clients accept empty URL and later build relative request URLs (e.g., \u0027/api/v3...\u0027), causing runtime httpx UnsupportedProtocol failures during tool execution.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-008",
+          "file": "KubeToolsTests",
+          "field": "kube_image_can_pull creates a pod with \u0060/bin/true\u0060 and waits for \u0060condition=Ready\u0060.",
+          "missingIn": "",
+          "severity": "Critical",
+          "message": "kube_image_can_pull creates a pod with \u0060/bin/true\u0060 and waits for \u0060condition=Ready\u0060.: expected If the image is pullable, the tool should return \u0060can_pull: true\u0060 even when the pod exits quickly with \u0060Succeeded\u0060., got Short-lived pods often never become Ready before completion, so \u0060kubectl wait ... condition=Ready\u0060 times out and returns a false negative (\u0060can_pull: false\u0060).",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "KubeToolsTests",
+          "field": "kube_image_present falls back to \u0060echo \u0027[]\u0027\u0060 when \u0060crictl\u0060 fails.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "kube_image_present falls back to \u0060echo \u0027[]\u0027\u0060 when \u0060crictl\u0060 fails.: expected An empty/fallback JSON payload should be handled as no cached images (\u0060present: false\u0060) without internal parsing errors., got \u0060_json.loads(\u0027[]\u0027)\u0060 returns a list, but code unconditionally calls \u0060data.get(...)\u0060, raising an exception and returning an error payload instead of a clean negative result.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-002",
+          "file": "CloudflareToolsTests",
+          "field": "cf_dns_list requests \u0060/dns_records\u0060 with \u0060per_page=200\u0060 once and stops.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "cf_dns_list requests \u0060/dns_records\u0060 with \u0060per_page=200\u0060 once and stops.: expected Tool doc says \u0022List all DNS records\u0022; zones with \u003E200 records should include every page., got Only the first page is returned, silently truncating results for larger zones.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-002",
+          "file": "ImageToolsTests",
+          "field": "image_list_tags slices with \u0060tags[-limit:]\u0060.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "image_list_tags slices with \u0060tags[-limit:]\u0060.: expected \u0060limit=0\u0060 should return zero tags (or be rejected), and negative limits should not produce surprising slices., got In Python, \u0060tags[-0:]\u0060 returns the full list, so \u0060limit=0\u0060 can dump all tags unexpectedly.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "DirigeraToolsTests",
+          "field": "Dirigera lazy init caches \u0060None\u0060 in \u0060_clients[\u0027dirigera\u0027]\u0060 on any init exception.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Dirigera lazy init caches \u0060None\u0060 in \u0060_clients[\u0027dirigera\u0027]\u0060 on any init exception.: expected Transient init failures should not permanently poison the cache; later calls should retry initialization., got After one transient failure, \u0060_dirigera()\u0060 returns cached \u0060None\u0060 forever, and subsequent operations fail as \u0022not configured\u0022 until process restart.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "SettingsEnvContractTests",
+          "field": "HOMELAB_MCP_AUDIT_LOG is present but empty (e.g., env var set to \u0022\u0022).",
+          "missingIn": "",
+          "severity": "High",
+          "message": "HOMELAB_MCP_AUDIT_LOG is present but empty (e.g., env var set to \u0022\u0022).: expected Blank optional env should fall back to ~/homelab-mcp/audit.log., got audit_log_path() returns Path(\u0022\u0022) -\u003E \u0022.\u0022, so downstream file logging can fail with IsADirectoryError when trying to open a directory as a file.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "SettingsEnvContractTests",
+          "field": "CF_DEFAULT_ZONE is set, but CF_ALLOWED_ZONES is unset/empty.",
+          "missingIn": "",
+          "severity": "Critical",
+          "message": "CF_DEFAULT_ZONE is set, but CF_ALLOWED_ZONES is unset/empty.: expected Configuration should reject this (or force membership), because contract says empty/unset CF_ALLOWED_ZONES means cf_dns_* tools must refuse all zones., got cf_default_zone() returns the explicit default zone when allowlist is empty, creating an allowlist bypass path for callers that rely on cf_default_zone().",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-003",
+          "file": "LiftPhase05Tests",
+          "field": "Running tools/lift_phase_0_5.py with --apply on a source repo that contains a blocking leak finding.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Running tools/lift_phase_0_5.py with --apply on a source repo that contains a blocking leak finding.: expected Blocking findings should prevent destination mutations (no files copied) or perform rollback., got Files are written during the copy loop before blocking findings are evaluated; script exits non-zero afterward but leaves partially copied/secret-bearing files in destination.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-002",
+          "file": "LeakScanTests",
+          "field": "High-entropy token appears in a test helper file like mcp/tests/conftest.py.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "High-entropy token appears in a test helper file like mcp/tests/conftest.py.: expected Test fixtures should not be promoted to blocking \u0022real-secret\u0022 by filename heuristic alone., got Severity downgrade logic only checks if path string contains \u0022test_\u0022; conftest.py under tests/ is treated as non-test and can be flagged \u0022real-secret\u0022, causing false blocking failures.",
+          "isAdvisory": false
+        }
+      ]
+    }
+  }
+}

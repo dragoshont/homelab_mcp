@@ -78,7 +78,25 @@ def main() -> int:
 
     scanned = set(scanned_list)
     inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
-    expected = {t["name"] for t in inventory["tools"]}
+    inventory_names = [t["name"] for t in inventory["tools"]]
+
+    # Detect duplicates in the INVENTORY too: a malformed inventory could
+    # collide names that the set-comparison silently de-duplicates.
+    seen_inv: set[str] = set()
+    inv_dups: list[str] = []
+    for name in inventory_names:
+        if name in seen_inv:
+            inv_dups.append(name)
+        seen_inv.add(name)
+    if inv_dups:
+        print(
+            f"FAIL: inventory contains duplicate tool name(s): "
+            f"{sorted(set(inv_dups))}",
+            file=sys.stderr,
+        )
+        return 5
+
+    expected = set(inventory_names)
 
     missing = sorted(expected - scanned)
     extra = sorted(scanned - expected)

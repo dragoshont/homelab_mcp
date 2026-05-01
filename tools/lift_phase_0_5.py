@@ -181,39 +181,40 @@ def leak_scan_file(path: Path, content: bytes) -> list[dict]:
                     "note": "Private IP appearing in non-comment context.",
                 })
 
-    # High-entropy tokens (Shannon ≥ 4.0 over 24+ chars). Skip well-known
-    # non-secret strings that pass the entropy threshold but are clearly
-    # configuration / option strings rather than credentials.
+    # High-entropy tokens (Shannon ≥ 4.0 over 24+ chars) across all text files,
+    # not just .py: a shell script or YAML credential is just as harmful in a
+    # public repo. Skip the well-known non-secret strings that pass the
+    # entropy threshold but are clearly configuration / option strings rather
+    # than credentials.
     NON_SECRET_PHRASES = (
         "StrictHostKeyChecking", "ConnectTimeout", "PasswordAuthentication",
         "PubkeyAuthentication", "UserKnownHostsFile", "Content-Type",
         "application/json", "multipart/form-data", "X-Plex-Token",
         "Authorization", "Bearer ",
     )
-    if path.suffix.lower() == ".py":
-        for m in SECRET_TOKEN.finditer(text):
-            tok = m.group(1)
-            if len(tok) < 24 or shannon(tok) < 4.0:
-                continue
-            if any(phrase in tok for phrase in NON_SECRET_PHRASES):
-                continue
-            line_start = text.rfind("\n", 0, m.start()) + 1
-            line_end = text.find("\n", m.start())
-            line = text[line_start:line_end if line_end != -1 else len(text)]
-            if any(phrase in line for phrase in NON_SECRET_PHRASES):
-                continue
-            if "test_" in str(path).lower() and ("hash" in line.lower() or "fake" in line.lower() or "example" in line.lower()):
-                sev = "low"
-            else:
-                sev = "real-secret"
-            findings.append({
-                "path": str(path),
-                "kind": "high-entropy-token",
-                "severity": sev,
-                "match": tok[:8] + "..." + tok[-4:],
-                "line": text.count("\n", 0, m.start()) + 1,
-                "note": "High-entropy token. May be an API key, password, or hash literal in a test fixture. Triage required.",
-            })
+    for m in SECRET_TOKEN.finditer(text):
+        tok = m.group(1)
+        if len(tok) < 24 or shannon(tok) < 4.0:
+            continue
+        if any(phrase in tok for phrase in NON_SECRET_PHRASES):
+            continue
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        line_end = text.find("\n", m.start())
+        line = text[line_start:line_end if line_end != -1 else len(text)]
+        if any(phrase in line for phrase in NON_SECRET_PHRASES):
+            continue
+        if is_test_file and ("hash" in line.lower() or "fake" in line.lower() or "example" in line.lower()):
+            sev = "low"
+        else:
+            sev = "real-secret"
+        findings.append({
+            "path": str(path),
+            "kind": "high-entropy-token",
+            "severity": sev,
+            "match": tok[:8] + "..." + tok[-4:],
+            "line": text.count("\n", 0, m.start()) + 1,
+            "note": "High-entropy token. May be an API key, password, or hash literal in a test fixture. Triage required.",
+        })
 
     return findings
 
