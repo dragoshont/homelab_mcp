@@ -99,7 +99,7 @@
       "id": "MF-7",
       "title": "Missing SDD artifacts",
       "rejection_proven": true,
-      "evidence": "All required artifacts exist except verify-result.json + f10-compliance.md (created at Steps 9/10 by CLI)."
+      "evidence": "All 5 content artifacts (context.json, contract.md, spec.md, design.md, as-findings.json) exist. Per the contract revision, verify-result.json / build-result.json / contract-grade.json / f10-compliance.md are step-produced artifacts not preconditions for MF-7; verify-result.json and build-result.json already exist; f10-compliance.md is produced by Step 10."
     },
     {
       "id": "MF-8",

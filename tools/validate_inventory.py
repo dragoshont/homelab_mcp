@@ -133,10 +133,13 @@ def scan_server_tools(server_py: Path) -> list[str]:
             continue
         if not node.decorator_list:
             continue
-        # Any decorator with attr 'tool' on a top-level function MUST be
-        # an mcp.tool decorator. A different namespace (cli.tool, app.tool)
-        # is a strict-mode failure: either the source is using a non-MCP
-        # decorator that we must learn about, or it's wrong.
+        # Strict mode (CodeRabbit review #7, design §9 generation rule step 1):
+        # any decorated top-level function in server.py MUST be an MCP tool.
+        # Silently skipping a function whose decorators are not @mcp.tool would
+        # let an unrecognised future decorator (e.g. @register_tool, @mcp.command)
+        # disappear from the inventory while the source repo claims it as a tool.
+        # The contract is: fail loudly, never silently skip.
+        recognised = False
         for dec in node.decorator_list:
             target = dec.func if isinstance(dec, ast.Call) else dec
             if isinstance(target, ast.Attribute) and target.attr in RECOGNISED_DECORATOR_ATTRS:

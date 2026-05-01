@@ -48,7 +48,7 @@ Tool source code is **not** moved in this PR.
 | Container | `homelab-mcp-proxy:1.1.0`, `imagePullPolicy: Never` | `apps/platform/mcp-proxy/deployment.yaml` |
 | OpenWebUI link | `http://homelab-mcp-proxy.default.svc.cluster.local:8080/openapi.json` | OpenWebUI MCP config |
 | Build pipeline | none — image built manually on host | confirmed prior session |
-| Tests | 101 passing (`mcp/tests/`) | `pytest mcp/tests -q` |
+| Tests | 102 passing (`mcp/tests/`) | `pytest mcp/tests -q` (Phase 0 baseline 2026-05-01) |
 
 ### 2.2 Problems with the monolith
 

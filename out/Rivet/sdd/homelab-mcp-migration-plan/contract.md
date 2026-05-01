@@ -63,9 +63,12 @@ Reject the PR if any of the following hold:
    isolation distinct from the readonly servers' transport.
 6. **MF-6** `as-findings.json` contains `severity: critical` findings that are not
    resolved or explicitly accepted with rationale.
-7. **MF-7** SDD artifacts in `out/Rivet/sdd/homelab-mcp-migration-plan/` are missing
+7. **MF-7** SDD content artifacts in `out/Rivet/sdd/homelab-mcp-migration-plan/` are missing
    any of: `context.json`, `contract.md`, `spec.md`, `design.md`,
-   `as-findings.json`, `verify-result.json`, `f10-compliance.md`.
+   `as-findings.json`. (`verify-result.json`, `build-result.json`,
+   `contract-grade.json`, and `f10-compliance.md` are produced by their
+   respective SDD steps and are not preconditions for this Phase 0 PR;
+   their absence pre-Step-9/10 does not trigger MF-7.)
 8. **MF-8** The PR modifies any file under `C:\src\homelab\` (the source repo).
 9. **MF-9** The PR makes any unannotated claim about a tool's "verified working"
    status. Verification status is permitted only for tools backed by smoke

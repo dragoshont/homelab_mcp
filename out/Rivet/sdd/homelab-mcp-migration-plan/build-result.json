@@ -6,7 +6,7 @@
   "artifacts": [
     {
       "kind": "validator",
-      "command": "python tools/validate_inventory.py",
+      "command": "python tools/validate_inventory.py --source-repo C:\\src\\homelab",
       "exit_code": 0,
       "stdout": "OK: 133/29/104 verified at source HEAD 0727116cc821",
       "asserts": [

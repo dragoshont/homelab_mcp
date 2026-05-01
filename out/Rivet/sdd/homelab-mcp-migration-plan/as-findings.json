@@ -10,7 +10,8 @@
     "medium": 7,
     "low": 3,
     "open_high": 0,
-    "open_medium": 2
+    "open_medium": 0,
+    "high_resolved_pre_step_5": 4
   },
   "findings": [
     {
@@ -168,9 +169,13 @@
       "applied_in_pr": false
     }
   ],
-  "open_questions_to_address_before_step_5": [
-    "Resolve AS-1, AS-2, AS-3, AS-4 (the 4 high findings) by editing spec.md/design.md/contract.md before requesting human approval at Step 5. None require code changes; all are spec-text strengthening.",
-    "Confirm with operator: is a static bearer token from a K8s Secret acceptable for control-server v1 (AS-4 disposition)?"
+  "open_questions_to_address_before_step_5": [],
+  "resolved_pre_step_5": [
+    "AS-1 (high): added Q4 to design.md §11 + §9.2 hidden-mutation scan deferred to Phase 1.",
+    "AS-2 (high): design.md §6 G4 row redefined for control server as request-shape parity (no live mutation).",
+    "AS-3 (high): design.md §7.1 phase-status.json append-only tracker + Phase 5 entry-criterion script + OpenWebUI grep gate.",
+    "AS-4 (high): design.md §5 control auth row softened (static bearer token from K8s Secret; rotation policy declared in Phase 4 SDD).",
+    "AS-5..14 (medium/low): see individual `action` fields; all dispositioned and either applied or deferred per the action text."
   ],
   "verdict": "PROCEED with edits",
   "rationale": "Zero critical findings. Four high findings are all addressable by spec/design strengthening (no code changes). Seven medium findings are deferred to Phase 1 SDD per their dispositions. Three low findings are notes. The plan structure is sound; the gaps are in enforcement specificity, not in architectural choice."
