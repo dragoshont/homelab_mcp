@@ -1,13 +1,13 @@
 {
   "source_repo": "dragoshont/homelab",
-  "source_commit": "5c25c3e9c7cd4094f5616e93de7db56b8ed459a7",
-  "captured_utc": "2026-05-01T14:39:47.474652+00:00",
+  "source_commit": "3088e67dae3445ce4a76af630732cc2da7daebfa",
+  "captured_utc": "2026-05-01T15:05:18.957213+00:00",
   "decision_history_preservation": "fresh-history-no-filter-repo",
   "files": [
     {
       "path": "mcp/Dockerfile",
-      "sha256": "c6279460b6f4cdf94caf1df7d1eb93c7a135401ce1660c535ff1e4d768e5abd8",
-      "bytes": 707
+      "sha256": "90fdde9e1a68dc6c9b857e342327daad5e0147ed44cf2c62d5d5c45410810a0f",
+      "bytes": 943
     },
     {
       "path": "mcp/pyproject.toml",
@@ -31,8 +31,8 @@
     },
     {
       "path": "mcp/src/homelab_mcp/clients.py",
-      "sha256": "fe433470fa62e8ba1b47e86993502d15d5b30a37e858b31a6b8aaa73484a6035",
-      "bytes": 7739
+      "sha256": "beabdfdc9ac1235aa8d6f2cd418ee0b12a0b7d4f18909e4e19737a05433c7082",
+      "bytes": 7988
     },
     {
       "path": "mcp/src/homelab_mcp/main.py",
@@ -56,8 +56,8 @@
     },
     {
       "path": "mcp/src/homelab_mcp/settings.py",
-      "sha256": "70a0101ec52a148b9e807055fcffe41932ade6391fcdf5c9be2a517b69901ae7",
-      "bytes": 6941
+      "sha256": "6d9c8c51cfbd27b701597a1b7deebf5398cca8f110347d64b32f2af021bfa7e5",
+      "bytes": 7903
     },
     {
       "path": "mcp/tests/conftest.py",
@@ -76,8 +76,8 @@
     },
     {
       "path": "mcp/tests/test_no_homelab_specifics_in_source.py",
-      "sha256": "a805c9b2e098909a7716fbac75f769ef10b4d3021ce47e18e4cafdfeb6a9803a",
-      "bytes": 5243
+      "sha256": "5844e169bf6a31007b1989772206c38e877fd90720db0214de7e20bb4cf372c8",
+      "bytes": 7125
     },
     {
       "path": "mcp/tests/test_readonly_enforcement.py",
@@ -86,8 +86,8 @@
     },
     {
       "path": "mcp/tests/test_settings_env_contract.py",
-      "sha256": "ceadbd80311ef9c7838a11cc89fbf7ec9cd74b5130db5ff20ce412a31d6ee122",
-      "bytes": 5994
+      "sha256": "739b7ee5a4729dae39238aa10a5eb60efd0bdf6ebe9fc1f6c6be1ed85d4d554a",
+      "bytes": 8156
     }
   ]
 }

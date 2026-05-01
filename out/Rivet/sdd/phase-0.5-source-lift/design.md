@@ -151,7 +151,8 @@ is NOT the gate — the script's exit code is.
 | Inventory parity (G-2) | 	ools/validate_inventory.py --source-repo C:\src\homelab | Source repo's tool set still 133/29/104 at pinned commit |
 | Lift completeness (G-5) | 	ools/verify_lift.py | AST-scan of LIFTED mcp/src/homelab_mcp/server.py produces exactly the 133 names in docs/migration/tool-inventory.json |
 | Test suite green | pytest mcp/tests -q from new repo | 102 passed (matches Phase 0 baseline) |
-| Leak-scan clean | 	ools/leak_scan.py mcp/ | leak-scan.json has no eal-secret or 
+| Leak-scan clean | 	ools/leak_scan.py mcp/ | leak-scan.json has no 
+eal-secret or 
 on-operator-copyright entries; otherwise the commit is blocked |
 | Source repo untouched | git -C C:\src\homelab status -s mcp/ | Empty output before and after Step 5 |
 

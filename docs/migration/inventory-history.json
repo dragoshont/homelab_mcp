@@ -14,5 +14,21 @@
       "readonly": 0
     },
     "rationale": "Phase 0.5 source-lift required source-side env-driven config refactor (Phase 0.4) and qBittorrent v5 endpoint fix. Both preserved the 133/29/104 tool inventory exactly; the re-pin captures the new HEAD with no change to the tool name set."
+  },
+  {
+    "phase": "0.5-followup",
+    "re_pinned_utc": "2026-05-01T15:00:00Z",
+    "from_commit": "5c25c3e9c7cd4094f5616e93de7db56b8ed459a7",
+    "to_commit": "3088e67dae3445ce4a76af630732cc2da7daebfa",
+    "tool_name_set_diff": {
+      "added": [],
+      "removed": []
+    },
+    "totals_diff": {
+      "tools": 0,
+      "writes": 0,
+      "readonly": 0
+    },
+    "rationale": "Phase 0.4 follow-up: 4 real bugs fixed in env-driven config (cf_default_zone allowlist membership, env_flag whitespace, ingress_host_re trailing-hyphen rejection, UNIFI_PORT empty handling) plus Dockerfile USER 1000 directive and tokenize-based docstring detection. Found by adversarial verify (Step 9 first run, 25 findings, 7 fixed in source + 3 in lift tooling). Tool inventory unchanged."
   }
 ]

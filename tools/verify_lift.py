@@ -54,11 +54,29 @@ def main() -> int:
         return 1
 
     try:
-        scanned = set(scan_server_tools(args.lifted_server))
+        scanned_list = scan_server_tools(args.lifted_server)
     except ValidationError as e:
         print(f"FAIL: cannot AST-scan lifted server.py: {e}", file=sys.stderr)
         return 2
 
+    # Detect duplicates BEFORE collapsing into a set: two @mcp.tool decorators
+    # on the same function name produce a list with duplicates that the set
+    # comparison silently collapses, hiding a real bug in source.
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for name in scanned_list:
+        if name in seen:
+            duplicates.append(name)
+        seen.add(name)
+    if duplicates:
+        print(
+            f"FAIL: lifted server.py has duplicate @mcp.tool decorators on: "
+            f"{sorted(set(duplicates))}",
+            file=sys.stderr,
+        )
+        return 4
+
+    scanned = set(scanned_list)
     inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
     expected = {t["name"] for t in inventory["tools"]}
 
@@ -73,7 +91,7 @@ def main() -> int:
             print(f"  in lifted server.py but NOT in inventory: {extra}", file=sys.stderr)
         return 3
 
-    print(f"OK: G-5 lift-completeness verified — {len(scanned)} tools, set equality with inventory.")
+    print(f"OK: G-5 lift-completeness verified — {len(scanned)} tools, set equality with inventory, no duplicate decorators.")
     return 0
 
 

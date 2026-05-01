@@ -249,10 +249,31 @@ def main() -> int:
     print(f"   leak-scan findings: {len(leak_findings)}")
     print(f"   files written: {written if not dry_run else 0}")
 
+    # Stale destination check: any *.py / Dockerfile / pyproject.toml under
+    # dest/mcp/ that is NOT in the source manifest is stale (source removed
+    # it but the previous lift left it behind). The lift script does NOT
+    # delete autonomously — it surfaces them so the operator can decide.
+    expected_paths = {(dest / f["path"]).resolve() for f in manifest_files}
+    expected_paths.add((dest / "mcp" / ".lift-manifest.json").resolve())
+    if (dest / "mcp").exists():
+        stale: list[Path] = []
+        for p in (dest / "mcp").rglob("*"):
+            if not p.is_file():
+                continue
+            # Skip __pycache__ / .pytest_cache / generated artifacts.
+            if any(part in {"__pycache__", ".pytest_cache"} for part in p.parts):
+                continue
+            if p.resolve() not in expected_paths:
+                stale.append(p)
+        if stale:
+            print(f"   WARNING: {len(stale)} stale destination file(s) not in source manifest:")
+            for p in stale[:10]:
+                print(f"      {p.relative_to(dest)}")
+            print("   These were not touched by this lift. Investigate and remove manually if appropriate.")
+
     # 3: AS-1 hard commit-gate
     blocking = [f for f in leak_findings if f["severity"] in BLOCK_SEVERITIES]
     sdd_dir = dest / "out" / "Rivet" / "sdd" / "phase-0.5-source-lift"
-    sdd_dir.mkdir(parents=True, exist_ok=True)
     leak_path = sdd_dir / "leak-scan.json"
     leak_doc = {
         "source_repo": str(source),
@@ -270,6 +291,7 @@ def main() -> int:
         "findings": leak_findings,
     }
     if not dry_run:
+        sdd_dir.mkdir(parents=True, exist_ok=True)
         leak_path.write_text(json.dumps(leak_doc, indent=2), encoding="utf-8")
         print(f"   leak scan written: {leak_path}")
     else:

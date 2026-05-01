@@ -1,0 +1,307 @@
+{
+  "timestamp": "2026-05-01T14:56:44.2325562+00:00",
+  "layers": {
+    "W": {
+      "layer": "W",
+      "name": "Wiring",
+      "durationSeconds": 0.0134898,
+      "findings": []
+    },
+    "PO": {
+      "layer": "PO",
+      "name": "Document Quality",
+      "durationSeconds": 0.0023536,
+      "findings": [
+        {
+          "check": "PO-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No report found \u2014 PO layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "VA": {
+      "layer": "VA",
+      "name": "Plan vs Audit",
+      "durationSeconds": 0.0008822,
+      "findings": [
+        {
+          "check": "VA-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No JSON report found \u2014 VA layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "VC": {
+      "layer": "VC",
+      "name": "Plan vs Code",
+      "durationSeconds": 0.0005061,
+      "findings": [
+        {
+          "check": "VC-1",
+          "file": "out/Rivet/",
+          "field": "",
+          "missingIn": "",
+          "severity": "Info",
+          "message": "No JSON report found \u2014 VC layer skipped. Run \u0027rivet analyze\u0027 first.",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "DC": {
+      "layer": "DC",
+      "name": "Obligations",
+      "durationSeconds": 0.3205144,
+      "findings": [
+        {
+          "check": "doc-sdd-doc-target",
+          "file": "tsg:phase-0.5-source-lift (Operations)",
+          "field": "Operations",
+          "missingIn": "",
+          "severity": "Warning",
+          "message": "SDD doc target unsatisfied: tsg:phase-0.5-source-lift (Operations) (no uncommitted markdown change at docs/TSGs/Operations/phase-0-5-source-lift.md)",
+          "isAdvisory": true
+        }
+      ]
+    },
+    "ADV": {
+      "layer": "ADV",
+      "name": "Adversarial",
+      "durationSeconds": 216.7674416,
+      "findings": [
+        {
+          "check": "BUG-004",
+          "file": "TestQbtClient",
+          "field": "qBittorrent returns HTTP 200 with body \u0027Fails.\u0027 when credentials are wrong",
+          "missingIn": "",
+          "severity": "High",
+          "message": "qBittorrent returns HTTP 200 with body \u0027Fails.\u0027 when credentials are wrong: expected _login() raises or sets _logged_in=False so subsequent calls know auth failed, got _login() only calls raise_for_status() (200 passes), sets _logged_in=True even on failed auth, causing infinite 403-retry loops",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-004",
+          "file": "TestHomebridgeClient",
+          "field": "Homebridge login response missing \u0027access_token\u0027 key (schema change or error body with 200 status)",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Homebridge login response missing \u0027access_token\u0027 key (schema change or error body with 200 status): expected _login() raises or signals failure so get() does not loop re-authenticating every call, got _token is set to None via .get(\u0027access_token\u0027), so every subsequent get() re-calls _login() silently, hammering the auth endpoint",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-008",
+          "file": "TestCheckReadonly",
+          "field": "policy.check_readonly audit callback type signature (3 args) does not match audit.audit function signature (4 args: logger, tool_name, params, result_summary)",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "policy.check_readonly audit callback type signature (3 args) does not match audit.audit function signature (4 args: logger, tool_name, params, result_summary): expected check_readonly can call the audit function provided by the server without TypeError, got audit.audit requires a Logger as first arg; Callable[[str, dict, str], None] annotation in check_readonly expects (tool_name, params, result_summary) \u2014 direct passing of audit.audit as the callback raises TypeError at runtime",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestDockerfile",
+          "field": "Dockerfile comment says \u0027container runs as non-root uid 1000\u0027 but no USER directive is present",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Dockerfile comment says \u0027container runs as non-root uid 1000\u0027 but no USER directive is present: expected Container process runs as uid 1000 (non-root) to match the passwd entry and SSH setup, got Without a USER instruction, the ENTRYPOINT runs as root (uid 0); the passwd entry for uid 1000 is unused unless an external orchestrator forces the uid, contradicting the self-documenting intent",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-005",
+          "file": "TestReadonlyAudit",
+          "field": "Write tools call _audit(tool_name, params) with default result_summary=\u0027ok\u0027 BEFORE _check_readonly, which itself emits a separate \u0027rejected_readonly\u0027 audit entry when HOMELAB_MCP_READONLY=1",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Write tools call _audit(tool_name, params) with default result_summary=\u0027ok\u0027 BEFORE _check_readonly, which itself emits a separate \u0027rejected_readonly\u0027 audit entry when HOMELAB_MCP_READONLY=1: expected When readonly mode blocks a write tool, the audit log should contain only a \u0027rejected_readonly\u0027 entry, not a preceding false \u0027ok\u0027 entry, got The audit log contains a misleading \u0027ok\u0027 entry for the operation, followed by a \u0027rejected_readonly\u0027 entry from _check_readonly. Tools like sonarr_search_missing, qbt_pause, dirigera_set_light, unifi_block (and ~15 others) all have _audit() before _check_readonly(), producing false \u0027ok\u0027 entries in the audit trail for operations that never executed.",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-003",
+          "file": "TestAppleNowPlaying",
+          "field": "apple_now_playing captures the bound async method \u0060atv.metadata.playing\u0060 without calling it, then checks for __await__ on the method object (which is False), so the method is never invoked",
+          "missingIn": "",
+          "severity": "High",
+          "message": "apple_now_playing captures the bound async method \u0060atv.metadata.playing\u0060 without calling it, then checks for __await__ on the method object (which is False), so the method is never invoked: expected The tool should await \u0060atv.metadata.playing()\u0060 and return actual playing metadata (title, artist, etc.), got p = atv.metadata.playing assigns the bound method; hasattr(bound_method, \u0027__await__\u0027) is False so \u0060p\u0060 is never called/awaited. All getattr(p, \u0027title\u0027, None) etc. return None, silently producing empty playing info",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "TestHostStatusParsing",
+          "field": "host_status parses MEM line from \u0060free -m\u0060; if the SSH command partially fails and MEM value is empty or contains non-numeric text, int() conversion raises unhandled ValueError",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "host_status parses MEM line from \u0060free -m\u0060; if the SSH command partially fails and MEM value is empty or contains non-numeric text, int() conversion raises unhandled ValueError: expected Graceful handling when MEM output is empty, malformed, or contains text like \u0027N/A\u0027, got mem_parts = parsed.get(\u0027MEM\u0027, \u00270 0 0\u0027).split() guards the default, but if SSH returns a line like \u0027MEM:\u0027 (empty value after colon), mem_parts becomes [\u0027\u0027] or empty-after-strip. int(mem_parts[0]) on \u0027\u0027 raises ValueError that propagates to the caller unhandled.",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-005",
+          "file": "TestClientSingleton",
+          "field": "_clients module-level dict is lazily populated by concurrent MCP tool calls without synchronization; two concurrent calls to _sonarr() could both pass the \u0060if \u0027sonarr\u0027 not in _clients\u0060 check and overwrite each other",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "_clients module-level dict is lazily populated by concurrent MCP tool calls without synchronization; two concurrent calls to _sonarr() could both pass the \u0060if \u0027sonarr\u0027 not in _clients\u0060 check and overwrite each other: expected Each client is instantiated exactly once and shared safely, got In an MCP server handling concurrent tool calls (e.g., homelab_overview calls multiple sub-tools), two threads/tasks may both read _clients[\u0027sonarr\u0027] as missing and each create a separate ServarrClient. While Python\u0027s GIL prevents memory corruption, it can cause duplicate HTTP sessions and inconsistent per-client state (e.g., auth tokens, session cookies).",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-008",
+          "file": "test_settings_env_contract",
+          "field": "CF_DEFAULT_ZONE is set to a domain not in CF_ALLOWED_ZONES",
+          "missingIn": "",
+          "severity": "High",
+          "message": "CF_DEFAULT_ZONE is set to a domain not in CF_ALLOWED_ZONES: expected cf_default_zone() should raise ConfigurationError or at least validate the explicit value is a member of cf_allowed_zones(), got cf_default_zone() only validates domain syntax, never checks membership in cf_allowed_zones(). A caller trusting cf_default_zone() as pre-authorized can operate on an unauthorized zone.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "test_settings_env_contract",
+          "field": "HOMELAB_MCP_READONLY env var has trailing whitespace (e.g. \u0027true \u0027 from YAML or .env)",
+          "missingIn": "",
+          "severity": "High",
+          "message": "HOMELAB_MCP_READONLY env var has trailing whitespace (e.g. \u0027true \u0027 from YAML or .env): expected env_flag(\u0027HOMELAB_MCP_READONLY\u0027) returns True because the intent is truthy, got env_flag does not call .strip() on the value, so \u0027true \u0027 is not in (\u00271\u0027, \u0027true\u0027, \u0027yes\u0027) and the function returns False, silently disabling readonly mode. require_env strips but env_flag does not.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-008",
+          "file": "test_settings_env_contract",
+          "field": "Subdomain label with trailing hyphen (e.g. \u0027foo-.cluster.example\u0027) is tested against ingress SSRF allowlist",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Subdomain label with trailing hyphen (e.g. \u0027foo-.cluster.example\u0027) is tested against ingress SSRF allowlist: expected ingress_host_re() rejects \u0027foo-.cluster.example\u0027 because trailing hyphens violate RFC 1035 label rules, got ingress_host_re() builds pattern ^[a-z0-9][a-z0-9-]*\\.{domain}$ which allows [a-z0-9-]* to end with a hyphen. The _LABEL_RE on line ~100 that correctly enforces no-trailing-hyphen is dead code (never referenced).",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-007",
+          "file": "test_settings_env_contract",
+          "field": "test_ingress_host_re_escapes_dots_in_domain uses input \u0027sonarrXclusterXexample\u0027 which is rejected by the literal \\. separator, not by domain dot escaping",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "test_ingress_host_re_escapes_dots_in_domain uses input \u0027sonarrXclusterXexample\u0027 which is rejected by the literal \\. separator, not by domain dot escaping: expected The test should fail if re.escape(domain) is replaced with just domain (i.e., dots in the domain become wildcards), got Input \u0027sonarrXclusterXexample\u0027 fails at the hard-coded \\. before the domain (X\u2260dot), so the test passes with or without re.escape. Use \u0027sonarr.clusterXexample\u0027 instead\u2014without re.escape the unescaped \u0027.\u0027 in \u0027cluster.example\u0027 would match \u0027X\u0027, producing a false allow.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-007",
+          "file": "test_no_homelab_specifics_in_source",
+          "field": "_is_in_docstring in test_no_homelab_specifics_in_source.py counts triple-quote occurrences, but string literals containing \u0027\u0022\u0022\u0022\u0027 corrupt the count",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "_is_in_docstring in test_no_homelab_specifics_in_source.py counts triple-quote occurrences, but string literals containing \u0027\u0022\u0022\u0022\u0027 corrupt the count: expected A private IP on a line after a string literal containing triple-quotes (e.g. x=\u0027\u0022\u0022\u0022\u0027) is detected as NOT inside a docstring, got _is_in_docstring counts all \u0027\u0022\u0022\u0022\u0027 substrings before the match position. A string literal like x=\u0027\u0022\u0022\u0022\u0027 increments the count to odd, so subsequent real code is misclassified as \u0027inside a docstring\u0027 and the private-data leak is silently skipped.",
+          "isAdvisory": false
+        },
+        {
+          "check": "BUG-001",
+          "file": "HttpClientLifecycleTests",
+          "field": "Each tool invocation constructs a new ServarrClient/QbtClient/Mylar3Client/PlexClient/HomebridgeClient instance under load.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Each tool invocation constructs a new ServarrClient/QbtClient/Mylar3Client/PlexClient/HomebridgeClient instance under load.: expected HTTP connections are deterministically released (close/Dispose) when the client is no longer needed., got clients.py creates httpx.Client instances but exposes no close() and never disposes them, so repeated instantiation can accumulate open sockets/file descriptors.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "UnifiConfigTests",
+          "field": "UNIFI_PORT is set but empty (common with misconfigured secret/env injection).",
+          "missingIn": "",
+          "severity": "High",
+          "message": "UNIFI_PORT is set but empty (common with misconfigured secret/env injection).: expected Port parsing should safely fall back to 443 (or emit a controlled config error)., got get_unifi_config() does int(env(\u0027UNIFI_PORT\u0027, \u0027443\u0027)); when env is empty string, int(\u0027\u0027) raises ValueError and crashes startup.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "HomebridgeAuthTests",
+          "field": "Homebridge login endpoint returns 200 but omits access_token (empty/malformed auth payload).",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Homebridge login endpoint returns 200 but omits access_token (empty/malformed auth payload).: expected _login() should reject missing token immediately with a clear auth error., got HomebridgeClient._login() assigns None to self._token, then get() sends Authorization: Bearer None and fails later with misleading HTTP errors.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-008",
+          "file": "KubeImageCanPullTests",
+          "field": "kube_image_can_pull is called with an image that is pullable, but the test pod (\u0060kubectl run ... -- /bin/true\u0060) exits immediately.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "kube_image_can_pull is called with an image that is pullable, but the test pod (\u0060kubectl run ... -- /bin/true\u0060) exits immediately.: expected Successful image pull should return \u0060{ \u0022can_pull\u0022: true }\u0060 even for short-lived pods., got The code waits for \u0060condition=Ready\u0060; short-lived pods often transition directly to \u0060Succeeded\u0060 and never become Ready, causing false \u0060can_pull: false\u0060 failures.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-002",
+          "file": "CloudflareDnsTests",
+          "field": "cf_dns_list is used on a zone containing more than 200 DNS records.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "cf_dns_list is used on a zone containing more than 200 DNS records.: expected Function should paginate Cloudflare responses and return all records as promised by the docstring., got Only one request is made with \u0060per_page=200\u0060, so records after page 1 are silently dropped.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-002",
+          "file": "ImageTagTests",
+          "field": "image_list_tags is called with \u0060limit=0\u0060 (or a negative limit).",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "image_list_tags is called with \u0060limit=0\u0060 (or a negative limit).: expected Boundary values should return zero tags (or be rejected as invalid)., got Slicing uses \u0060tags[-limit:]\u0060; for \u0060limit=0\u0060, Python returns all tags (\u0060tags[0:]\u0060), violating the limit contract.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-005",
+          "file": "DirigeraClientCacheTests",
+          "field": "Dirigera initialization fails once due a transient error (network/import issue), then configuration becomes healthy.",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Dirigera initialization fails once due a transient error (network/import issue), then configuration becomes healthy.: expected Subsequent calls should retry initialization and recover., got Exception path stores \u0060_clients[\u0027dirigera\u0027] = None\u0060; future calls return cached None without retry, causing permanent failure until process restart.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "KubeImagePresentTests",
+          "field": "kube_image_present runs on a host without crictl, triggering command fallback \u0060|| echo \u0027[]\u0027\u0060.",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "kube_image_present runs on a host without crictl, triggering command fallback \u0060|| echo \u0027[]\u0027\u0060.: expected Empty fallback should be handled as no cached images and return \u0060{present: false}\u0060 without internal parsing errors., got Parsed JSON is a list (\u0060[]\u0060), but code unconditionally calls \u0060data.get(...)\u0060; this raises \u0060\u0027list\u0027 object has no attribute get\u0027\u0060 and returns an error payload.",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-004",
+          "file": "SettingsContractTests",
+          "field": "Operator sets CF_ALLOWED_ZONES=internal.example and CF_DEFAULT_ZONE=prod.example",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Operator sets CF_ALLOWED_ZONES=internal.example and CF_DEFAULT_ZONE=prod.example: expected Configuration should fail fast because default zone is outside the allowlist contract, got cf_default_zone() returns CF_DEFAULT_ZONE without checking membership in cf_allowed_zones(), enabling an out-of-policy zone selection",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-002",
+          "file": "LiftPhase05Tests",
+          "field": "Run tools/lift_phase_0_5.py with --dry-run on a clean checkout",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "Run tools/lift_phase_0_5.py with --dry-run on a clean checkout: expected Dry-run should not create or modify any files/directories, got main() always executes sdd_dir.mkdir(...) even in dry-run mode, causing filesystem writes despite \u0027writes nothing\u0027 contract",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-002",
+          "file": "LiftPhase05Tests",
+          "field": "Destination repo already contains mcp/src/old_removed.py, but source repo no longer tracks it",
+          "missingIn": "",
+          "severity": "High",
+          "message": "Destination repo already contains mcp/src/old_removed.py, but source repo no longer tracks it: expected Lift should produce an exact mirror or fail on stale destination files, got lift_phase_0_5.py only copies tracked source files and never deletes stale destination files, leaving drift that can ship obsolete code",
+          "isAdvisory": false
+        },
+        {
+          "check": "ADV-001",
+          "file": "VerifyLiftTests",
+          "field": "scan_server_tools() returns duplicate tool names due accidental duplicate decorator definitions",
+          "missingIn": "",
+          "severity": "Medium",
+          "message": "scan_server_tools() returns duplicate tool names due accidental duplicate decorator definitions: expected verify_lift should fail and report duplicate tool names explicitly, got verify_lift.py converts scanned and inventory names to sets, silently collapsing duplicates and potentially passing a broken lifted server",
+          "isAdvisory": false
+        }
+      ]
+    }
+  }
+}

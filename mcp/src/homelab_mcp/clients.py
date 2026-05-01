@@ -80,12 +80,18 @@ def get_dirigera_config() -> ServiceConfig:
 
 def get_unifi_config() -> dict:
     """Ubiquiti UniFi controller (UDM/UDM-Pro/Cloud Key). Local-only login.
-    Create a dedicated Limited Admin (no 2FA) in UDM web UI > Settings > Admins."""
+    Create a dedicated Limited Admin (no 2FA) in UDM web UI > Settings > Admins.
+
+    UNIFI_PORT defaults to 443. Empty-string values (e.g., from a misconfigured
+    secret injection that resolves to '') also fall back to 443 rather than
+    raising ValueError at startup.
+    """
+    port_raw = (env("UNIFI_PORT", "443") or "443").strip()
     return {
         "host":     env("UNIFI_HOST"),                  # IP or hostname of the UDM
         "username": env("UNIFI_USER"),
         "password": env("UNIFI_PASS"),
-        "port":     int(env("UNIFI_PORT", "443")),
+        "port":     int(port_raw or "443"),
         "site":     env("UNIFI_SITE", "default"),
     }
 

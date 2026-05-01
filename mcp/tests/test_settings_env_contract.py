@@ -98,10 +98,25 @@ def test_ingress_host_re_rejects_invalid_domain(monkeypatch):
 
 def test_ingress_host_re_escapes_dots_in_domain(monkeypatch):
     """If we forgot to re.escape the env value, '.' would match any char,
-    so 'cluster-example' (hyphen) would slip past 'cluster.example'."""
+    so 'sonarr.clusterXexample' (X where the literal dot should be) would
+    slip past the domain 'cluster.example' separator."""
     monkeypatch.setenv("HOMELAB_INGRESS_DOMAIN", "cluster.example")
     pat = ingress_host_re()
-    assert not pat.match("sonarrXclusterXexample")
+    # The dot between 'cluster' and 'example' MUST be a literal dot.
+    # Without re.escape, an X (or any single char) would match the unescaped ".".
+    assert not pat.match("sonarr.clusterXexample")
+    # Sanity: the correct dotted form still matches.
+    assert pat.match("sonarr.cluster.example")
+
+
+def test_ingress_host_re_rejects_trailing_hyphen(monkeypatch):
+    """RFC 1035: a label MUST NOT end with a hyphen. The pattern must enforce this."""
+    monkeypatch.setenv("HOMELAB_INGRESS_DOMAIN", "cluster.example")
+    pat = ingress_host_re()
+    assert not pat.match("foo-.cluster.example")
+    assert not pat.match("-foo.cluster.example")  # leading hyphen also invalid per existing pattern
+    assert pat.match("foo-bar.cluster.example")  # interior hyphen OK
+    assert pat.match("a.cluster.example")  # single-char label OK
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +181,35 @@ def test_cf_default_zone_falls_back_to_first_allowed(monkeypatch):
     monkeypatch.setenv("CF_ALLOWED_ZONES", "z.example, a.example, m.example")
     # Sorted ⇒ a.example.
     assert cf_default_zone() == "a.example"
+
+
+def test_cf_default_zone_explicit_must_be_in_allowed(monkeypatch):
+    """If CF_ALLOWED_ZONES is set, an explicit CF_DEFAULT_ZONE that is NOT
+    in the allowlist must be rejected, otherwise the default could silently
+    bypass the allowlist contract."""
+    monkeypatch.setenv("CF_ALLOWED_ZONES", "internal.example")
+    monkeypatch.setenv("CF_DEFAULT_ZONE", "prod.example")
+    with pytest.raises(ConfigurationError) as exc:
+        cf_default_zone()
+    assert "not in CF_ALLOWED_ZONES" in str(exc.value)
+
+
+def test_cf_default_zone_explicit_in_allowed_works(monkeypatch):
+    monkeypatch.setenv("CF_ALLOWED_ZONES", "internal.example, prod.example")
+    monkeypatch.setenv("CF_DEFAULT_ZONE", "prod.example")
+    assert cf_default_zone() == "prod.example"
+
+
+def test_env_flag_strips_whitespace(monkeypatch):
+    """YAML and .env files easily introduce trailing spaces; truthy intent
+    must not silently flip to False because of whitespace."""
+    from homelab_mcp.settings import env_flag
+    monkeypatch.setenv("HOMELAB_MCP_READONLY", "true ")
+    assert env_flag("HOMELAB_MCP_READONLY") is True
+    monkeypatch.setenv("HOMELAB_MCP_READONLY", "  yes")
+    assert env_flag("HOMELAB_MCP_READONLY") is True
+    monkeypatch.setenv("HOMELAB_MCP_READONLY", " 1\n")
+    assert env_flag("HOMELAB_MCP_READONLY") is True
 
 
 def test_cf_default_zone_neither_set_raises():

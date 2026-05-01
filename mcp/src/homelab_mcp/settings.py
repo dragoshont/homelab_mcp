@@ -53,11 +53,16 @@ class ConfigurationError(RuntimeError):
 
 
 def env_flag(name: str, default: bool = False) -> bool:
-    """Read a boolean environment variable using the server's existing rules."""
+    """Read a boolean environment variable using the server's existing rules.
+
+    Strips surrounding whitespace before comparison so that values pasted in
+    from YAML or a `.env` file (where trailing spaces are easy to introduce)
+    do not silently become False.
+    """
     value = os.environ.get(name)
     if value is None:
         return default
-    return value.lower() in ("1", "true", "yes")
+    return value.strip().lower() in ("1", "true", "yes")
 
 
 def audit_log_path() -> Path:
@@ -96,13 +101,18 @@ def homelab_ingress_domain() -> str:
     )
 
 
-# Subdomain label per RFC 1035 plus optional hyphens. Public-safe pattern:
-# the domain comes from env at call time, never compiled from a literal.
+# Subdomain label per RFC 1035: starts with letter/digit, may contain letters,
+# digits, hyphens, but MUST NOT end with a hyphen. Public-safe pattern: the
+# domain comes from env at call time, never compiled from a literal.
 _LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 
 
 def ingress_host_re() -> re.Pattern[str]:
     """Compile the ingress allowlist regex from the env-supplied domain.
+
+    The subdomain label conforms to RFC 1035: leading character is a letter
+    or digit; trailing character must also be a letter or digit (single-char
+    labels permitted). Trailing hyphens are rejected.
 
     Compiled fresh on each call (cheap; the pattern is short). This avoids
     a module-level cache whose contents would be wrong if the env var
@@ -115,7 +125,7 @@ def ingress_host_re() -> re.Pattern[str]:
             f"HOMELAB_INGRESS_DOMAIN={domain!r} is not a valid domain "
             f"(letters, digits, hyphens, dots only)"
         )
-    return re.compile(rf"^[a-z0-9][a-z0-9-]*\.{re.escape(domain)}$")
+    return re.compile(rf"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.{re.escape(domain)}$")
 
 
 _DOMAIN_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
@@ -167,15 +177,24 @@ def cf_default_zone() -> str:
     if CF_DEFAULT_ZONE is not explicitly set. Raises if neither is configured
     so cf_dns_* tools fail-fast with a clear message rather than silently
     operating on an unintended zone.
+
+    If both are set, the explicit CF_DEFAULT_ZONE MUST be a member of
+    CF_ALLOWED_ZONES — otherwise the operator's allowlist could be silently
+    bypassed by a default zone they thought was advisory.
     """
     explicit = os.environ.get("CF_DEFAULT_ZONE", "").strip().lower()
+    allowed = cf_allowed_zones()
     if explicit:
         if not _DOMAIN_RE.match(explicit):
             raise ConfigurationError(
                 f"CF_DEFAULT_ZONE={explicit!r} is not a valid domain"
             )
+        if allowed and explicit not in allowed:
+            raise ConfigurationError(
+                f"CF_DEFAULT_ZONE={explicit!r} is not in CF_ALLOWED_ZONES "
+                f"({sorted(allowed)}); the default cannot bypass the allowlist"
+            )
         return explicit
-    allowed = cf_allowed_zones()
     if not allowed:
         raise ConfigurationError(
             "Neither CF_DEFAULT_ZONE nor CF_ALLOWED_ZONES is set; "

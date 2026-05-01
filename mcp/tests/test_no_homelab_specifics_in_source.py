@@ -78,11 +78,54 @@ def _is_in_comment(line: str, match_start: int) -> bool:
 def _is_in_docstring(content: str, abs_pos: int) -> bool:
     """Return True if abs_pos is inside a triple-quoted string.
 
-    Counts ``\"\"\"`` and ``'''`` occurrences before abs_pos; odd count = inside.
+    Uses Python's tokenize module rather than naive substring counting:
+    a triple-quote sequence inside a regular string literal does not open
+    a docstring (the naive count would flip parity and misclassify).
     """
-    triple_double = content.count('"""', 0, abs_pos)
-    triple_single = content.count("'''", 0, abs_pos)
-    return (triple_double % 2 == 1) or (triple_single % 2 == 1)
+    import io
+    import tokenize
+    try:
+        tokens = list(tokenize.tokenize(io.BytesIO(content.encode("utf-8")).readline))
+    except (tokenize.TokenizeError, IndentationError):
+        # Fall back to naive count if file fails to tokenize (shouldn't happen
+        # for valid Python source).
+        triple_double = content.count('"""', 0, abs_pos)
+        triple_single = content.count("'''", 0, abs_pos)
+        return (triple_double % 2 == 1) or (triple_single % 2 == 1)
+    # Walk tokens, track whether abs_pos falls inside a STRING token whose
+    # text starts with triple quotes.
+    for tok in tokens:
+        if tok.type != tokenize.STRING:
+            continue
+        text = tok.string
+        if not (text.startswith('"""') or text.startswith("'''")
+                or text.startswith('r"""') or text.startswith("r'''")
+                or text.startswith('b"""') or text.startswith("b'''")
+                or text.startswith('rb"""') or text.startswith("rb'''")
+                or text.startswith('br"""') or text.startswith("br'''")):
+            continue
+        # tok.start = (row, col); compute absolute offsets via line/col
+        # mapping. Cheaper: count lines+columns in content.
+        start_line, start_col = tok.start
+        end_line, end_col = tok.end
+        start_abs = _line_col_to_abs(content, start_line, start_col)
+        end_abs = _line_col_to_abs(content, end_line, end_col)
+        if start_abs <= abs_pos < end_abs:
+            return True
+    return False
+
+
+def _line_col_to_abs(content: str, line: int, col: int) -> int:
+    """Convert a 1-based (line, col) tuple from tokenize to a 0-based absolute offset."""
+    abs_pos = 0
+    current_line = 1
+    while current_line < line and abs_pos < len(content):
+        nl = content.find("\n", abs_pos)
+        if nl == -1:
+            return abs_pos
+        abs_pos = nl + 1
+        current_line += 1
+    return abs_pos + col
 
 
 def _scan_file(path: Path) -> list[str]:

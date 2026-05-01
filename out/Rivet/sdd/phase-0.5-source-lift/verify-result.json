@@ -1,0 +1,33 @@
+{
+  "ExitCode": 0,
+  "Output": "rivet verify completed with layers w,po,va,vc,adv and 25 total finding(s). Review the canonical Rivet-Verify artifacts for details.",
+  "Timestamp": "2026-05-01T14:56:44.2424472\u002B00:00",
+  "FindingsJsonPath": "Rivet-Verify-latest.json",
+  "LayersJsonPath": "Rivet-VerifyLayers-latest.json",
+  "AgentReviewStatus": "pending",
+  "PendingAgentRows": 25,
+  "GeneratedBy": "rivet-cli",
+  "CliVersion": "2.9.21",
+  "DiffHash": "480b4b931060f872205ab9e6868b8d5a2686996fe772da8000dac77f59ec30b9",
+  "Signal": {
+    "DeterministicFindingCount": 0,
+    "HasDeterministicFailures": false,
+    "DeterministicSeverities": [],
+    "AdvisoryFindingCount": 4,
+    "TotalAdvFindingCount": 25,
+    "HighConfidenceAdvCount": 0,
+    "SingleModelAdvCount": 25,
+    "HighConfidenceSeverities": [],
+    "SingleModelSeverities": [
+      "High",
+      "Medium"
+    ],
+    "ModelCount": 2,
+    "ModelErrorCount": 0,
+    "AllModelsFailed": false,
+    "CriticalCount": 0,
+    "TotalFindingCount": 25
+  },
+  "BlockingReasons": [],
+  "PolicyUsed": "critical"
+}
