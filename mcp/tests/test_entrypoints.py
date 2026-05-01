@@ -92,3 +92,79 @@ def test_main_shim_resolves_to_run_domain(fresh_entrypoints, domain):
     assert loaded == {domain}, (
         f"shim {shim_name} loaded {loaded}, expected only {{{domain!r}}}"
     )
+# --- Phase 1.6 bundle entry-point tests ---
+
+
+def test_resolve_bundle_domains_falls_back_to_all_five(fresh_entrypoints, monkeypatch):
+    ep, _ = fresh_entrypoints
+    monkeypatch.delenv("HOMELAB_MCP_BUNDLE_DOMAINS", raising=False)
+    monkeypatch.delenv("HOMELAB_MCP_BUNDLE_CONFIG", raising=False)
+    assert ep._resolve_bundle_domains() == tuple(SUPPORTED)
+
+
+def test_resolve_bundle_domains_csv_env_wins(fresh_entrypoints, monkeypatch):
+    ep, _ = fresh_entrypoints
+    monkeypatch.setenv("HOMELAB_MCP_BUNDLE_DOMAINS", "platform,media")
+    monkeypatch.delenv("HOMELAB_MCP_BUNDLE_CONFIG", raising=False)
+    assert ep._resolve_bundle_domains() == ("platform", "media")
+
+
+def test_resolve_bundle_domains_csv_handles_whitespace(fresh_entrypoints, monkeypatch):
+    ep, _ = fresh_entrypoints
+    monkeypatch.setenv("HOMELAB_MCP_BUNDLE_DOMAINS", "  platform , network  ")
+    assert ep._resolve_bundle_domains() == ("platform", "network")
+
+
+def test_resolve_bundle_domains_csv_empty_after_strip_raises(fresh_entrypoints, monkeypatch):
+    ep, _ = fresh_entrypoints
+    monkeypatch.setenv("HOMELAB_MCP_BUNDLE_DOMAINS", " , ,, ")
+    with pytest.raises(RuntimeError, match="empty list"):
+        ep._resolve_bundle_domains()
+
+
+def test_resolve_bundle_domains_yaml(fresh_entrypoints, monkeypatch, tmp_path):
+    pytest.importorskip("yaml", reason="bundle YAML config requires PyYAML")
+    ep, _ = fresh_entrypoints
+    cfg = tmp_path / "bundle.yaml"
+    cfg.write_text("servers:\n  - network\n  - homeauto\n", encoding="utf-8")
+    monkeypatch.delenv("HOMELAB_MCP_BUNDLE_DOMAINS", raising=False)
+    monkeypatch.setenv("HOMELAB_MCP_BUNDLE_CONFIG", str(cfg))
+    assert ep._resolve_bundle_domains() == ("network", "homeauto")
+
+
+def test_resolve_bundle_domains_yaml_missing_file_raises(fresh_entrypoints, monkeypatch, tmp_path):
+    ep, _ = fresh_entrypoints
+    monkeypatch.delenv("HOMELAB_MCP_BUNDLE_DOMAINS", raising=False)
+    monkeypatch.setenv("HOMELAB_MCP_BUNDLE_CONFIG", str(tmp_path / "absent.yaml"))
+    with pytest.raises(RuntimeError, match="does not exist"):
+        ep._resolve_bundle_domains()
+
+
+def test_resolve_bundle_domains_yaml_wrong_servers_type_raises(fresh_entrypoints, monkeypatch, tmp_path):
+    pytest.importorskip("yaml")
+    ep, _ = fresh_entrypoints
+    cfg = tmp_path / "bundle.yaml"
+    cfg.write_text("servers: not-a-list\n", encoding="utf-8")
+    monkeypatch.setenv("HOMELAB_MCP_BUNDLE_CONFIG", str(cfg))
+    with pytest.raises(RuntimeError, match="must be a list"):
+        ep._resolve_bundle_domains()
+
+
+def test_resolve_bundle_domains_yaml_empty_list_raises(fresh_entrypoints, monkeypatch, tmp_path):
+    pytest.importorskip("yaml")
+    ep, _ = fresh_entrypoints
+    cfg = tmp_path / "bundle.yaml"
+    cfg.write_text("servers: []\n", encoding="utf-8")
+    monkeypatch.setenv("HOMELAB_MCP_BUNDLE_CONFIG", str(cfg))
+    with pytest.raises(RuntimeError, match="empty"):
+        ep._resolve_bundle_domains()
+
+
+def test_main_bundle_loads_resolved_subset(fresh_entrypoints, monkeypatch):
+    """_main_bundle pulls domains from env and loads exactly that subset."""
+    ep, calls = fresh_entrypoints
+    monkeypatch.setenv("HOMELAB_MCP_BUNDLE_DOMAINS", "network,homeauto")
+    ep._main_bundle()
+    assert calls == [None]
+    loaded = {d for d in SUPPORTED if f"homelab_mcp.tools.{d}" in sys.modules}
+    assert loaded == {"network", "homeauto"}
