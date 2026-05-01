@@ -49,22 +49,27 @@ jobs:
 
       - name: Build tag list
         id: tags
+        env:
+          # GHCR namespace tracks the GitHub repo owner (dragoshont).
+          # Docker Hub namespace is independent and configured here.
+          # Override at run time via `gh workflow run release-monolith.yml -f tag=vX.Y.Z`
+          # — namespace stays whatever this env says.
+          GHCR_NAMESPACE: ${{ github.repository_owner }}
+          DOCKERHUB_NAMESPACE: hserver
         run: |
-          owner="${{ github.repository_owner }}"
           ver="${{ steps.ver.outputs.version }}"
           {
             echo "tags<<EOF"
-            echo "ghcr.io/${owner}/homelab-mcp:${ver}"
-            echo "ghcr.io/${owner}/homelab-mcp:v${ver}"
-            echo "docker.io/${owner}/homelab-mcp:${ver}"
-            echo "docker.io/${owner}/homelab-mcp:v${ver}"
+            echo "ghcr.io/${GHCR_NAMESPACE}/homelab-mcp:${ver}"
+            echo "ghcr.io/${GHCR_NAMESPACE}/homelab-mcp:v${ver}"
+            echo "docker.io/${DOCKERHUB_NAMESPACE}/homelab-mcp:${ver}"
+            echo "docker.io/${DOCKERHUB_NAMESPACE}/homelab-mcp:v${ver}"
             if [[ "${{ steps.ver.outputs.is_prerelease }}" == "false" ]]; then
-              echo "ghcr.io/${owner}/homelab-mcp:latest"
-              echo "docker.io/${owner}/homelab-mcp:latest"
+              echo "ghcr.io/${GHCR_NAMESPACE}/homelab-mcp:latest"
+              echo "docker.io/${DOCKERHUB_NAMESPACE}/homelab-mcp:latest"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
