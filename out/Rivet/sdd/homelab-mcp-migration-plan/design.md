@@ -404,6 +404,178 @@ phase SDD that owns it.
   Re-evaluate per server if we want the Docker-built image's signing /
   SBOM / auto-update benefits more than build control.
 
+### 4.4 Per-server configuration contract (how users wire to their own services)
+
+Every split server must work for users who run **their own** Sonarr/Radarr/UniFi/Plex/etc.,
+not just the operator's homelab. This section pins the configuration
+contract grounded in the env-var names already used by the source repo
+(`mcp/src/homelab_mcp/clients.py` at the pinned commit).
+
+#### Principles
+
+1. **Twelve-factor.** Each service is configured via env vars only — no
+   config files baked into the image. Bundle (§4.1) layers a YAML
+   wrapper on top but resolves to the same env vars internally.
+2. **Optional services.** A service whose env vars are unset is treated
+   as "not configured":
+   - Tools that depend on it are **registered** (so the inventory still
+     matches `tool-inventory.json` for G1) but return a structured
+     error `{"error": "service_not_configured", "service": "sonarr",
+     "missing": ["SONARR_URL", "SONARR_API_KEY"]}` on call.
+   - This avoids "all-or-nothing" deployment: a user with only Plex
+     configured still gets the rest of the readonly platform tools.
+   - Rationale: keeping registration stable lets the bundle's gates
+     B1–B4 keep working without per-deploy inventory recomputation.
+3. **No secret leakage.** Env vars carrying credentials (API keys,
+   passwords, tokens) are referenced by name in K8s manifests via
+   `secretKeyRef`; never logged; redacted from `audit_*` tool output.
+4. **Discovery vs. configuration.** Some tools discover their target
+   from the runtime environment (kubeconfig file, mounted Docker
+   socket). Most service-specific tools (Sonarr/Radarr/Plex/qbt/UniFi/
+   etc.) require explicit env-var config because there's no homelab-wide
+   service-discovery convention.
+
+#### Env-var contract per server
+
+The names below are the **canonical contract** going forward and are
+**identical to what the current monolith already reads**, so the source
+repo's existing `apps/platform/mcp-proxy/deployment.yaml` continues to
+work unchanged. Phase SDDs lift them into per-server `pyproject.toml`
+extras and `homelab-mcp-{server}` Helm/Kustomize manifests.
+
+##### `homelab-mcp-platform`
+
+| Var | Purpose | Required for |
+|-----|---------|--------------|
+| `KUBECONFIG` | Path to kubeconfig | All `kube_*`, `flux_*` (RO), `gitops_*`, `ingress_*`, `cert_*`, `dns_*` tools |
+| `HOMELAB_HOST` | SSH host for `host_*` and `ansible_*` tools | All `host_*`, `ansible_*`, `backup_*` tools |
+| `HOMELAB_SSH_KEY` | Path to SSH private key | Same as above |
+| `HOMELAB_SSH_USER` | SSH username | Same as above |
+| `HOMELAB_MCP_AUDIT_LOG` | Audit log path | All tools (recommended; default `/var/log/homelab-mcp/{server}.log`) |
+| `HOMELAB_MCP_READONLY` | Force read-only mode (`true`/`false`) | All tools (defaults true on RO servers) |
+| `CF_DNS_API_TOKEN` / `CLOUDFLARE_API_TOKEN` | Cloudflare API token | `cf_*`, `dns_*` tools |
+| `CF_ALLOWED_ZONES` | Comma-separated zone allowlist | `cf_*` tools |
+| `NETDATA_URL` | Netdata HTTP endpoint | `netdata_*` tool |
+
+##### `homelab-mcp-media`
+
+All Servarr-family services share the `*_URL` + `*_API_KEY` shape used by `clients.py:get_*_config()`:
+
+| Var | Purpose |
+|-----|---------|
+| `SONARR_URL`, `SONARR_API_KEY` | Sonarr |
+| `RADARR_URL`, `RADARR_API_KEY` | Radarr |
+| `LIDARR_URL`, `LIDARR_API_KEY` | Lidarr |
+| `READARR_URL`, `READARR_API_KEY` | Readarr |
+| `MYLAR3_URL`, `MYLAR3_API_KEY` | Mylar3 |
+| `PROWLARR_URL`, `PROWLARR_API_KEY` | Prowlarr |
+| `QBT_URL`, `QBT_USER`, `QBT_PASS` | qBittorrent (basic-auth WebUI) |
+| `PLEX_URL`, `PLEX_TOKEN` | Plex Media Server |
+| `MEDIA_LIBRARY_ROOT` | Optional: shared media root for `media_*` tools |
+| `CF_DNS_API_TOKEN` | Cloudflare API token (for `cf_*` cross-seed/cross-fork tools) |
+
+##### `homelab-mcp-network`
+
+| Var | Purpose |
+|-----|---------|
+| `UNIFI_HOST` | UniFi controller hostname/IP |
+| `UNIFI_USER`, `UNIFI_PASS` | Local Limited-Admin login (no 2FA) |
+| `UNIFI_PORT` | Default `443` |
+| `UNIFI_SITE` | Default `default` |
+
+##### `homelab-mcp-homeauto`
+
+| Var | Purpose |
+|-----|---------|
+| `DIRIGERA_IP` | IKEA DIRIGERA hub IP (lib appends scheme + port) |
+| `DIRIGERA_TOKEN` | DIRIGERA token (one-time `generate-token <hub-ip>` to obtain) |
+| `HOMEBRIDGE_URL` | Homebridge UI |
+| `HOMEBRIDGE_USER`, `HOMEBRIDGE_PASS` | Homebridge UI login |
+| `SCRYPTED_URL` | Scrypted endpoint (default `http://scrypted:11080`) |
+| `APPLE_TV_DEVICES` | Comma-separated Apple TV device list |
+
+##### `homelab-mcp-control`
+
+The control server consumes the **union of mutating tools across domains**, so
+its env-var set is the union of every other server's relevant vars **plus**
+the control-server bearer token:
+
+- All Servarr `*_URL` + `*_API_KEY` (used by `*_search_missing`)
+- `QBT_URL` + `QBT_USER` + `QBT_PASS` (for `qbt_pause` / `qbt_resume`)
+- `PLEX_URL` + `PLEX_TOKEN` (for `plex_maintenance` / `plex_scan_library`)
+- `PROWLARR_URL` + `PROWLARR_API_KEY` (for indexer add/remove)
+- `KUBECONFIG` (for `kube_image_can_pull`, `kube_restart`)
+- `UNIFI_HOST`, `UNIFI_USER`, `UNIFI_PASS` (for block/unblock/wlan/reconnect)
+- `DIRIGERA_IP`, `DIRIGERA_TOKEN` (for set_light/set_outlet/set_blind/trigger_scene)
+- `APPLE_TV_DEVICES` (for apple_*)
+- **`HOMELAB_MCP_CONTROL_TOKEN`** (mandatory bearer token; auth gate per §5)
+
+##### Bundle (§4.1) extends, doesn't replace
+
+The bundle's `bundle.yaml` (§4.1) does NOT introduce new config keys per
+service. Each `servers.{name}` block resolves its environment by:
+1. Inheriting from the process environment as if running standalone, AND
+2. Allowing override per-server via `env:` block in `bundle.yaml`:
+
+```yaml
+servers:
+  media:
+    enabled: true
+    env:
+      SONARR_URL: http://my-sonarr.lan:8989
+      SONARR_API_KEY: '${oc.env:SONARR_API_KEY}'   # OmegaConf-style env interpolation
+```
+
+This lets one bundle process run media against a private Sonarr URL
+while platform's `KUBECONFIG` points elsewhere, without polluting the
+shared environment.
+
+#### Per-tool service-availability detection (Phase 1 deliverable)
+
+Each tool that depends on a service must call a uniform availability
+check before doing work:
+
+```python
+def _require(svc_name: str, *envs: str) -> Optional[ServiceUnavailable]:
+    missing = [e for e in envs if not os.environ.get(e)]
+    if missing:
+        return ServiceUnavailable(svc_name, missing)
+    return None
+
+@mcp.tool()
+def sonarr_calendar(...) -> dict:
+    if err := _require("sonarr", "SONARR_URL", "SONARR_API_KEY"):
+        return err.as_mcp_response()   # structured "service not configured" error
+    ...
+```
+
+The Phase 1 SDD lifts a single shared `_require` helper into
+`homelab-mcp-core` so all 5 servers use the same shape.
+
+#### Catalog readiness gate C5 (extends C1–C4 in §4.3)
+
+Each split server's `docker-mcp-registry/server.yaml`:
+- MUST list every env var **declared** by the server's `_require` calls
+  in the `config.env:` or `config.secrets:` block.
+- MUST mark credentials (anything ending in `_API_KEY`, `_TOKEN`,
+  `_PASS`, `_PASSWORD`) as `secrets:` not `env:`.
+- MUST set `example` (NEVER `value`) for secret entries so Docker MCP
+  Catalog renders the input field but never bakes the value.
+
+The Phase 1 SDD validates C5 by running a script that compares each
+server's `_require` env-var calls (AST scan) to its `server.yaml`
+config block and fails on any mismatch.
+
+#### Out of scope for Phase 0
+
+- Concrete `_require` helper implementation (Phase 1 in `homelab-mcp-core`).
+- Service-discovery automation (k8s service annotations, DNS-SD, mDNS).
+  These are user-driven config; we don't try to auto-detect their stack.
+- Multi-instance per service (e.g., two Sonarr instances). Today's
+  contract is one service URL per env-var name. If multi-instance is
+  needed later, the Phase 1+ SDD that introduces it adds `*_2_URL` /
+  `*_2_API_KEY` or moves to a JSON list — out of scope here.
+
 ## 5. Transport and security
 
 | Concern | Readonly servers | Control server |
