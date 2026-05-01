@@ -12,6 +12,13 @@ on:
 permissions:
   contents: read
   packages: write
+  # Required so the SLSA provenance attestation produced by the build
+  # composite action can be pushed alongside the image.
+  attestations: write
+  # The composite action also accepts ``sign: true`` for cosign keyless
+  # signing; rolling :main builds don't sign (release lane does), but
+  # the OIDC token permission stays granted for parity with releases.
+  id-token: write
 
 concurrency:
   group: build-monolith-${{ github.ref }}

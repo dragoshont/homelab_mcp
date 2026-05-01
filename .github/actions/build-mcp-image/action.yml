@@ -1,54 +1,197 @@
 name: Build MCP image
-description: Build the homelab-mcp monolith image and (optionally) push it to one or more registries.
+description: |
+  Build a homelab-mcp* image and (optionally) push it to one or more
+  registries with full supply-chain hardening: SBOM + provenance
+  attestations, cosign keyless signing, and Trivy vulnerability scan
+  with HIGH/CRITICAL gating.
+
+  Used by all four homelab_mcp build/release workflows. Refactor here
+  rather than in each workflow so the four lanes can never drift on
+  supply-chain controls.
 inputs:
   context:
-    description: Build context directory
+    description: Build context directory.
     required: false
     default: mcp
   dockerfile:
-    description: Path to Dockerfile (relative to repo root)
+    description: Path to Dockerfile (relative to repo root).
     required: false
     default: mcp/Dockerfile
+  build-args:
+    description: Newline-separated list of KEY=VALUE build args.
+    required: false
+    default: ""
   tags:
-    description: Newline-separated list of fully-qualified image tags to build/push
+    description: Newline-separated list of fully-qualified image tags to build/push.
     required: true
   push:
-    description: Whether to push the image after build (true/false)
+    description: Whether to push the image after build (true/false).
     required: false
     default: "false"
   platforms:
-    description: Target platforms
+    description: |
+      Comma-separated target platforms. Default linux/amd64 keeps
+      iteration fast on push-to-main builds; release workflows should
+      override this to ``linux/amd64,linux/arm64`` so OSS consumers on
+      Raspberry Pi / Apple Silicon dev machines get a runnable image.
     required: false
     default: linux/amd64
   labels:
-    description: OCI labels (newline-separated key=value)
+    description: OCI labels (newline-separated key=value).
     required: false
     default: ""
   cache-scope:
-    description: GitHub Actions cache scope key (must be unique per workflow to avoid races)
+    description: GitHub Actions cache scope (must be unique per workflow to avoid races).
     required: false
     default: mcp-monolith
+  sbom:
+    description: |
+      Generate and attach an SBOM (true/false). Driven by
+      docker/build-push-action's built-in SBOM support, which uses
+      buildkit's syft integration. Released images should always have
+      one; rolling :main builds do too because the cost is small.
+    required: false
+    default: "true"
+  provenance:
+    description: |
+      Generate SLSA provenance attestation (true/false). Same rationale
+      as ``sbom``. Buildkit emits SLSA v0.2.
+    required: false
+    default: "true"
+  sign:
+    description: |
+      Cosign-keyless-sign the pushed image (true/false). Requires
+      ``id-token: write`` permission on the calling workflow's
+      ``permissions:`` block. Only meaningful when ``push: true``.
+    required: false
+    default: "false"
+  scan:
+    description: |
+      Run Trivy vulnerability scan on the built image (true/false).
+      Fails the step on HIGH/CRITICAL severities (see ``scan-severity``).
+      The scan runs against the local image (load builds) or the
+      registry image at the digest (push builds).
+    required: false
+    default: "true"
+  scan-severity:
+    description: Trivy --severity argument (comma-separated).
+    required: false
+    default: "HIGH,CRITICAL"
+  scan-exit-code:
+    description: |
+      Trivy exit code for findings. ``1`` fails the build on any
+      vulnerability matching ``scan-severity``; ``0`` is informational
+      only.
+    required: false
+    default: "1"
+  scan-ignore-unfixed:
+    description: |
+      Pass --ignore-unfixed to Trivy (true/false). Default ``true``
+      because we cannot remediate vulnerabilities upstream hasn't
+      patched yet; failing on them would block all releases.
+    required: false
+    default: "true"
+
 outputs:
   digest:
-    description: Image digest of the built/pushed image
+    description: Image digest of the built/pushed image (sha256:...).
     value: ${{ steps.build.outputs.digest }}
+
 runs:
   using: composite
   steps:
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
+
     - name: Set up Buildx
       uses: docker/setup-buildx-action@v3
+
     - name: Build and push
       id: build
       uses: docker/build-push-action@v6
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.dockerfile }}
+        build-args: ${{ inputs.build-args }}
         platforms: ${{ inputs.platforms }}
         tags: ${{ inputs.tags }}
         push: ${{ inputs.push }}
+        load: ${{ inputs.push != 'true' && !contains(inputs.platforms, ',') }}
         labels: ${{ inputs.labels }}
-        provenance: false
+        provenance: ${{ inputs.provenance }}
+        sbom: ${{ inputs.sbom }}
         cache-from: type=gha,scope=${{ inputs.cache-scope }}
         cache-to: type=gha,scope=${{ inputs.cache-scope }},mode=max
+
+    - name: Install cosign
+      if: ${{ inputs.sign == 'true' && inputs.push == 'true' }}
+      uses: sigstore/cosign-installer@v3
+
+    - name: Sign image with cosign (keyless)
+      if: ${{ inputs.sign == 'true' && inputs.push == 'true' }}
+      shell: bash
+      env:
+        DIGEST: ${{ steps.build.outputs.digest }}
+        TAGS: ${{ inputs.tags }}
+      run: |
+        set -euo pipefail
+        if [ -z "${DIGEST:-}" ]; then
+          echo "::error::cosign sign step ran but build did not output a digest"
+          exit 1
+        fi
+        # Sign every tag at the digest produced by the build. Signing
+        # at the digest (not the tag alone) makes the signature
+        # immutable: a re-tag of a different image cannot inherit the
+        # signature.
+        echo "$TAGS" | while IFS= read -r tag; do
+          tag="$(echo "$tag" | xargs)"  # trim whitespace
+          [ -z "$tag" ] && continue
+          repo="${tag%%:*}"
+          target="${repo}@${DIGEST}"
+          echo "::group::cosign sign $target"
+          cosign sign --yes "$target"
+          echo "::endgroup::"
+        done
+
+    - name: Install Trivy
+      if: ${{ inputs.scan == 'true' }}
+      uses: aquasecurity/setup-trivy@v0.2.0
+      with:
+        cache: true
+        version: v0.55.2
+
+    - name: Trivy vulnerability scan
+      if: ${{ inputs.scan == 'true' }}
+      shell: bash
+      env:
+        DIGEST: ${{ steps.build.outputs.digest }}
+        TAGS: ${{ inputs.tags }}
+        SEVERITY: ${{ inputs.scan-severity }}
+        EXIT_CODE: ${{ inputs.scan-exit-code }}
+        IGNORE_UNFIXED: ${{ inputs.scan-ignore-unfixed }}
+        PUSHED: ${{ inputs.push }}
+      run: |
+        set -euo pipefail
+        first_tag="$(echo "$TAGS" | sed -n '1{s/^[[:space:]]*//;s/[[:space:]]*$//;p;}')"
+        if [ -z "$first_tag" ]; then
+          echo "::error::trivy scan: empty tags input"
+          exit 1
+        fi
+        if [ "$PUSHED" = "true" ]; then
+          # Scan the registry image at the digest: matches exactly what
+          # consumers will pull, regardless of arch.
+          repo="${first_tag%%:*}"
+          target="${repo}@${DIGEST}"
+        else
+          # Scan the locally loaded image (single-arch, push=false).
+          target="$first_tag"
+        fi
+        echo "Scanning $target with severity=$SEVERITY"
+        unfixed_arg=""
+        if [ "$IGNORE_UNFIXED" = "true" ]; then unfixed_arg="--ignore-unfixed"; fi
+        trivy image \
+          --severity "$SEVERITY" \
+          --exit-code "$EXIT_CODE" \
+          --no-progress \
+          $unfixed_arg \
+          "$target"

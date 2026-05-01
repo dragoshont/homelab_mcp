@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
   packages: write
+  # Required for cosign keyless signing via the workflow's OIDC token.
+  id-token: write
+  # Required to push SLSA provenance attestations alongside the image.
+  attestations: write
 
 concurrency:
   group: release-monolith-${{ github.ref }}
@@ -89,7 +93,15 @@ jobs:
         with:
           tags: ${{ steps.tags.outputs.tags }}
           push: "true"
+          # Multi-arch on releases: linux/amd64 (homelab nodes) +
+          # linux/arm64 (Raspberry Pi / Apple Silicon dev machines).
+          # Push-to-main builds keep amd64-only for fast iteration.
+          platforms: linux/amd64,linux/arm64
           cache-scope: monolith-release
+          # Supply-chain hardening: SBOM + SLSA provenance attestations
+          # default true; sign with cosign keyless on every release;
+          # Trivy gates the build on HIGH/CRITICAL CVEs.
+          sign: "true"
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
