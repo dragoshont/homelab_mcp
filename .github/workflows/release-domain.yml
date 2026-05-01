@@ -30,7 +30,15 @@ permissions:
   packages: write
 
 concurrency:
-  group: release-domain-${{ github.ref }}
+  # Discriminate by the actual tag being released. For tag-push events
+  # ``github.ref_name`` is the tag (e.g. ``network-v0.1.0``); for
+  # ``workflow_dispatch`` it would be the branch (``main``) which
+  # would collapse simultaneous dispatches of different domains into
+  # the same group, so we prefer the explicit ``inputs.tag`` when
+  # supplied. Result: ``network-v0.1.0`` and ``media-v0.1.0`` released
+  # in the same git push (or two ``gh workflow run`` calls within
+  # seconds) each get their own concurrency group and run in parallel.
+  group: release-domain-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
