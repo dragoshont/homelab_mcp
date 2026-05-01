@@ -1,0 +1,143 @@
+name: Publish to PyPI
+
+# Phase 2.4: publishes the homelab-mcp Python package to PyPI on every
+# semver tag release. Uses PyPI's trusted publisher (OIDC) flow so no
+# long-lived API token needs to live as a repo secret.
+#
+# Setup (one-time, performed by repo maintainer):
+#   1. On https://pypi.org create the project ``homelab-mcp`` (publish
+#      a 0.0.0 placeholder once if needed).
+#   2. Add a Trusted Publisher with:
+#        owner            = dragoshont
+#        repository       = homelab_mcp
+#        workflow filename = pypi-publish.yml
+#        environment       = pypi
+#   3. Create a GitHub Environment named ``pypi`` with required
+#      reviewers if you want a manual approval gate per release.
+#
+# Until the trusted publisher binding exists this workflow is wired but
+# inert: tag pushes will run, build the wheel, and fail at the publish
+# step with a clear PyPI 403. That's intentional — flipping it on is a
+# one-line approval rather than a code change.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      # Domain-scoped tags (network-v0.1.0 etc.) do NOT trigger PyPI
+      # publishes: the same package is shipped from every domain
+      # release because the package contains all five domains and
+      # selects via console scripts. Re-publishing on every domain tag
+      # would just bump the version mismatch problem — the per-domain
+      # images are versioned independently, but the wheel tracks the
+      # bundle (homelab-mcp:vX.Y.Z).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag (e.g. v1.2.0)
+        required: true
+
+permissions:
+  contents: read
+  # PyPI's trusted publisher uses the GitHub-issued OIDC token. No
+  # other registry needs id-token: write here.
+  id-token: write
+
+concurrency:
+  group: pypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Parse + validate version
+        id: ver
+        run: |
+          ref="${{ inputs.tag || github.ref_name }}"
+          ref="${ref#refs/tags/}"
+          ver="${ref#v}"
+          if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::tag '$ref' is not a valid vX.Y.Z[-pre]"
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pin pyproject version to tag
+        # The tag drives the published version. Setting it here rather
+        # than committing pyproject.toml on every release means main is
+        # always at the develop-time placeholder (0.1.0) and the tag is
+        # the single source of truth for the wheel version.
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          path = "mcp/pyproject.toml"
+          with open(path, encoding="utf-8") as f:
+              text = f.read()
+          # Replace the first ``version = "..."`` line in [project]; we
+          # don't have a generic TOML parser here to avoid an extra dep.
+          new = re.sub(
+              r'^version\s*=\s*".*"$',
+              f'version = "{os.environ["VERSION"]}"',
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if new == text:
+              raise SystemExit("could not find a version line in pyproject.toml")
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(new)
+          PY
+          grep '^version =' mcp/pyproject.toml
+
+      - name: Install build
+        run: |
+          python -m pip install --upgrade pip build
+
+      - name: Build sdist + wheel
+        working-directory: mcp
+        run: python -m build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist-${{ steps.ver.outputs.version }}
+          path: mcp/dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/homelab-mcp/${{ needs.build.outputs.version }}/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi-dist-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Trusted publisher: no password / api-token argument. PyPI
+          # exchanges the GitHub OIDC token for a short-lived publish
+          # credential. If the trusted-publisher binding has not been
+          # configured on PyPI yet, this step fails with a 403.
+          packages-dir: dist
