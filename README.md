@@ -124,27 +124,46 @@ Tool inventory and credential matrix:
 
 ## Roadmap (Phase 1+)
 
-The current image is one big monolith with all 133 tools in a single
-process. Future work splits this along trust boundaries so a client can
-register a smaller surface and so mutating tools live behind their own
-endpoint:
+The bundle image carries all 133 tools in a single process. Phase 1+
+adds **per-domain images** along trust boundaries so a client can
+register a smaller surface and mutating tools live behind their own
+endpoint. The full plan is in
+[`docs/migration/phase-1-plus-plan.md`](docs/migration/phase-1-plus-plan.md).
 
-| Server | Role | Tools | Mutating |
-|---|---|---:|---:|
-| `homelab-mcp-platform` | Read-only — Kubernetes, host, FluxCD, image registry, Cloudflare DNS, Netdata | 51 | 0 |
-| `homelab-mcp-media` | Read-only — Sonarr / Radarr / Lidarr / Readarr / Mylar3 / Prowlarr / qBittorrent / Plex | 30 | 0 |
-| `homelab-mcp-network` | Read-only — UniFi inventory & status | 7 | 0 |
-| `homelab-mcp-homeauto` | Read-only — DIRIGERA, Homebridge, Scrypted, Apple TV | 16 | 0 |
-| `homelab-mcp-control` | **Opt-in** — all mutating actions across domains | 29 | **29** |
-| `homelab-mcp-bundle` | Single process running any subset via config (drop-in for today's monolith) | (sum) | (sum) |
+| Server | Role | Tools | Mutating | Status |
+|---|---|---:|---:|---|
+| `homelab-mcp-bundle` (today's `homelab-mcp`) | All five domains in one process — drop-in monolith | 133 | 29 | ✅ Shipping (Phase 0) |
+| `homelab-mcp-platform` | Read-only — Kubernetes, host, FluxCD, image registry, Cloudflare DNS, Netdata | 51 | 0 | 🚧 Phase 1.1+ |
+| `homelab-mcp-media` | Read-only — Sonarr / Radarr / Lidarr / Readarr / Mylar3 / Prowlarr / qBittorrent / Plex | 30 | 0 | 🚧 Phase 1.1+ |
+| `homelab-mcp-network` | Read-only — UniFi inventory & status | 7 | 0 | 🚧 Phase 1.1+ |
+| `homelab-mcp-homeauto` | Read-only — DIRIGERA, Homebridge, Scrypted, Apple TV | 16 | 0 | 🚧 Phase 1.1+ |
+| `homelab-mcp-control` | **Opt-in** — all mutating actions across domains | 29 | **29** | 🚧 Phase 1.5 |
 
-Set-equality with the current 133/29/104 totals is enforced as a CI gate
-across the split (see [`docs/migration/migration-plan.md`](docs/migration/migration-plan.md)).
+**Phase 1.0 (server.py refactor) is complete:** the 3,319-line monolith
+is now split into a 35-line orchestrator (`server.py`) plus shared
+runtime (`_runtime.py`) plus five domain modules
+(`tools/{platform,media,network,homeauto,control}.py`). Tool source is
+byte-faithful, verified by `tools/verify_lift.py` (G-5).
 
-Each server will publish on the same channels the monolith uses today:
-`ghcr.io/dragoshont/homelab-mcp-{server}:<ver>`,
-`hserver/homelab-mcp-{server}:<ver>`, and (where pure-Python) PyPI for
-`uvx`/`pip install`.
+**Phase 1.1+ adds the per-domain images.** Each is built from the same
+`mcp/` package via `mcp/Dockerfile.domain` with a `DOMAIN` build-arg.
+The `homelab_mcp.entrypoints` module exposes `run_domain("network")`
+which imports only one `tools/{domain}` module before starting the
+server, so the resulting per-domain image exposes exactly that
+domain's tools (and no others).
+
+Per-domain release tags are `<domain>-vX.Y.Z` (e.g. `network-v0.1.0`)
+and publish to both registries with multiple tags per release:
+
+- `ghcr.io/dragoshont/homelab-mcp-{domain}:{version}`
+- `ghcr.io/dragoshont/homelab-mcp-{domain}:v{version}`
+- `ghcr.io/dragoshont/homelab-mcp-{domain}:latest` (non-prereleases only)
+- `docker.io/hserver/homelab-mcp-{domain}:{version}`
+- `docker.io/hserver/homelab-mcp-{domain}:v{version}`
+- `docker.io/hserver/homelab-mcp-{domain}:latest` (non-prereleases only)
+
+Set-equality with the 133/29/104 totals is enforced by
+`tools/verify_lift.py` on every change.
 
 ## Repository layout
 

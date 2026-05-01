@@ -1,0 +1,122 @@
+name: Release per-domain images (GHCR + Docker Hub)
+
+# Phase 1.1+: each per-domain image (homelab-mcp-network, -media,
+# -platform, -homeauto, -control) is published independently from a
+# semver tag of the form ``<domain>-vX.Y.Z`` (e.g. ``network-v0.1.0``).
+# A single workflow with a matrix builds and pushes one tag at a time.
+#
+# This is intentionally separate from release-monolith.yml (which
+# publishes the bundle ``homelab-mcp:vX.Y.Z`` from ``vX.Y.Z`` tags) so
+# the two release lanes can iterate independently. A bundle release
+# does NOT trigger per-domain releases and vice versa; rolling them
+# together is a manual coordination step.
+
+on:
+  push:
+    tags:
+      - "platform-v*.*.*"
+      - "media-v*.*.*"
+      - "network-v*.*.*"
+      - "homeauto-v*.*.*"
+      - "control-v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag (e.g. network-v0.1.0)
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-domain-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Parse domain + version
+        id: parse
+        env:
+          GHCR_NAMESPACE: ${{ github.repository_owner }}
+          DOCKERHUB_NAMESPACE: hserver
+        run: |
+          ref="${{ inputs.tag || github.ref_name }}"
+          ref="${ref#refs/tags/}"
+          if [[ ! "$ref" =~ ^(platform|media|network|homeauto|control)-v([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?)$ ]]; then
+            echo "::error::tag '$ref' is not a valid <domain>-vX.Y.Z[-pre]"
+            exit 1
+          fi
+          domain="${BASH_REMATCH[1]}"
+          ver="${BASH_REMATCH[2]}"
+          echo "domain=$domain" >> "$GITHUB_OUTPUT"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          # Pre-release tags should not move :latest
+          if [[ "$ver" == *"-"* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Build the tag list (echoed here for transparency in logs).
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/${GHCR_NAMESPACE}/homelab-mcp-${domain}:${ver}"
+            echo "ghcr.io/${GHCR_NAMESPACE}/homelab-mcp-${domain}:v${ver}"
+            echo "docker.io/${DOCKERHUB_NAMESPACE}/homelab-mcp-${domain}:${ver}"
+            echo "docker.io/${DOCKERHUB_NAMESPACE}/homelab-mcp-${domain}:v${ver}"
+            if [[ "$ver" != *"-"* ]]; then
+              echo "ghcr.io/${GHCR_NAMESPACE}/homelab-mcp-${domain}:latest"
+              echo "docker.io/${DOCKERHUB_NAMESPACE}/homelab-mcp-${domain}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ steps.parse.outputs.domain }} (v${{ steps.parse.outputs.version }})
+        uses: docker/build-push-action@v6
+        with:
+          context: mcp
+          file: mcp/Dockerfile.domain
+          build-args: |
+            DOMAIN=${{ steps.parse.outputs.domain }}
+          platforms: linux/amd64
+          tags: ${{ steps.parse.outputs.tags }}
+          push: true
+          provenance: false
+          # Per-domain cache scope so the five images don't poison each
+          # other's cache (each has different runtime env defaults).
+          cache-from: type=gha,scope=domain-${{ steps.parse.outputs.domain }}
+          cache-to: type=gha,scope=domain-${{ steps.parse.outputs.domain }},mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.parse.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.title=homelab-mcp-${{ steps.parse.outputs.domain }}
+            org.opencontainers.image.description=Domain-scoped MCP server (${{ steps.parse.outputs.domain }}) lifted from the homelab-mcp monolith

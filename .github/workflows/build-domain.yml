@@ -1,0 +1,80 @@
+name: Build per-domain images (GHCR)
+
+# Phase 1.1+: rolling :main + :sha-<short> tags for each per-domain
+# image, mirroring build-monolith.yml but for the five domain images.
+# A push to main that touches mcp/** or .github/workflows/build-domain.yml
+# rebuilds and re-pushes all five.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mcp/**"
+      - ".github/workflows/build-domain.yml"
+      - ".github/workflows/release-domain.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-domain-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        domain: [platform, media, network, homeauto, control]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute tags
+        id: tags
+        env:
+          GHCR_NAMESPACE: ${{ github.repository_owner }}
+          DOMAIN: ${{ matrix.domain }}
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/${GHCR_NAMESPACE}/homelab-mcp-${DOMAIN}:main"
+            echo "ghcr.io/${GHCR_NAMESPACE}/homelab-mcp-${DOMAIN}:sha-${short_sha}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ${{ matrix.domain }}
+        uses: docker/build-push-action@v6
+        with:
+          context: mcp
+          file: mcp/Dockerfile.domain
+          build-args: |
+            DOMAIN=${{ matrix.domain }}
+          platforms: linux/amd64
+          tags: ${{ steps.tags.outputs.tags }}
+          push: true
+          provenance: false
+          cache-from: type=gha,scope=domain-${{ matrix.domain }}
+          cache-to: type=gha,scope=domain-${{ matrix.domain }},mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.title=homelab-mcp-${{ matrix.domain }}
+            org.opencontainers.image.description=Domain-scoped MCP server (${{ matrix.domain }}) - rolling main build
