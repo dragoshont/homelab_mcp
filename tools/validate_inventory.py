@@ -133,10 +133,25 @@ def scan_server_tools(server_py: Path) -> list[str]:
 
 
 def _extract_set_constants(seq: ast.expr) -> list[str] | None:
-    """Return string constants from a Set/List/Tuple, or None if not such."""
-    if isinstance(seq, (ast.Set, ast.List, ast.Tuple)):
-        return sorted(e.value for e in seq.elts if isinstance(e, ast.Constant))
-    return None
+    """Return string constants from a Set/List/Tuple, or None if not such.
+
+    If any element is NOT an `ast.Constant` string (e.g. an imported name,
+    a function call, an unpacked starred expr) the set is not fully
+    resolvable at parse time. Return None rather than a partial result
+    (verify run #2 finding ADV-004 high) so the caller can report it as
+    an unsupported form rather than silently treating a partial set as
+    authoritative.
+    """
+    if not isinstance(seq, (ast.Set, ast.List, ast.Tuple)):
+        return None
+    names: list[str] = []
+    for e in seq.elts:
+        if isinstance(e, ast.Constant) and isinstance(e.value, str):
+            names.append(e.value)
+        else:
+            # Anything not a string literal taints the set; refuse to guess.
+            return None
+    return sorted(names)
 
 
 def _extract_write_tools_value(value: ast.expr | None) -> list[str] | None:
@@ -163,7 +178,11 @@ def _extract_write_tools_value(value: ast.expr | None) -> list[str] | None:
 def scan_write_tools(policy_py: Path) -> list[str]:
     src = policy_py.read_text(encoding="utf-8")
     module = ast.parse(src)
-    for node in ast.walk(module):
+    # Only consider module-level assignments. ast.walk() would dive into
+    # function/class bodies and let a nested-scope `WRITE_TOOLS = ...`
+    # silently shadow an unrecognised module-level form (verify run #2
+    # finding ADV-002).
+    for node in module.body:
         # Plain assignment: WRITE_TOOLS = ...
         if isinstance(node, ast.Assign):
             for target in node.targets:
@@ -206,10 +225,23 @@ def diff_sets(label_a: str, set_a: set, label_b: str, set_b: set) -> str:
 
 
 def assert_pinned_commit(repo: Path, commit: str | None) -> str:
-    head = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        # Verify run #2 finding ADV-004 medium: a non-git --source-repo
+        # crashed with a raw traceback. Convert to a controlled failure.
+        raise ValidationError(
+            f"source repo {repo} is not a git repository (or git is unavailable): "
+            f"git rev-parse HEAD exited {e.returncode}"
+        ) from e
+    except FileNotFoundError as e:
+        raise ValidationError(
+            f"git executable not found while inspecting source repo {repo}"
+        ) from e
+    head = result.stdout.strip()
     if commit and head != commit:
         # Not a hard failure: caller may run on a working tree. Print and
         # continue; T3/T7 will catch any drift.
@@ -252,9 +284,38 @@ def validate(source_repo: Path, expected_commit: str | None = None) -> int:
         raise ValidationError(
             f"T1 schema: inventory.servers missing required server key(s) {sorted(missing_servers)}"
         )
+    # Each server entry must be a dict with an int 'tools' count
+    # (verify run #2 finding ADV-004 high). An empty dict previously
+    # KeyError'd later in per-server cross-check.
+    for srv_name, props in inventory["servers"].items():
+        if not isinstance(props, dict):
+            raise ValidationError(
+                f"T1 schema: inventory.servers[{srv_name!r}] must be an object, got {type(props).__name__}"
+            )
+        if "tools" not in props or not isinstance(props["tools"], int):
+            raise ValidationError(
+                f"T1 schema: inventory.servers[{srv_name!r}] missing required int 'tools' field"
+            )
+    # Detect duplicate tool names BEFORE per-entry validation so the error
+    # message is unambiguous (verify run #2 finding ADV-001 medium).
+    seen_names: set[str] = set()
+    for t in inventory["tools"]:
+        name = t.get("name") if isinstance(t, dict) else None
+        if isinstance(name, str):
+            if name in seen_names:
+                raise ValidationError(
+                    f"T1 schema: duplicate tool name {name!r} in inventory.tools"
+                )
+            seen_names.add(name)
     for t in inventory["tools"]:
         if not {"name", "server", "mutating"} <= t.keys():
             raise ValidationError(f"T1 schema: tool entry missing required keys: {t}")
+        # Verify run #2 finding ADV-004 high: a non-string name later
+        # crashed `tool_name.split(...)` with AttributeError.
+        if not isinstance(t["name"], str) or not t["name"]:
+            raise ValidationError(
+                f"T1 schema: tool entry has non-string or empty 'name': {t!r}"
+            )
         if not isinstance(t["mutating"], bool):
             raise ValidationError(
                 f"T1 schema: tool {t.get('name')!r} mutating must be bool"
@@ -262,6 +323,25 @@ def validate(source_repo: Path, expected_commit: str | None = None) -> int:
         if t["server"] not in ALL_SERVERS:
             raise ValidationError(
                 f"T1 schema: tool {t['name']!r} server {t['server']!r} not in {ALL_SERVERS}"
+            )
+    # Verify run #2 finding ADV-007 high: validate the totals header
+    # against the actual tools array, so a corrupted totals block can't
+    # silently coexist with a valid tools list.
+    totals = inventory.get("totals")
+    if not isinstance(totals, dict):
+        raise ValidationError("T1 schema: totals must be a dict")
+    actual_tools = len(inventory["tools"])
+    actual_writes = sum(1 for t in inventory["tools"] if t["mutating"])
+    actual_readonly = actual_tools - actual_writes
+    for label, actual in (
+        ("tools", actual_tools),
+        ("writes", actual_writes),
+        ("readonly", actual_readonly),
+    ):
+        declared = totals.get(label)
+        if declared != actual:
+            raise ValidationError(
+                f"T1 schema: totals.{label} = {declared!r} but tools array has {actual}"
             )
 
     # Pinned commit advisory.
