@@ -623,6 +623,16 @@ this plan.
   `image: dragoshont/homelab-mcp-{server}`). Keeps build pipeline
   ownership in this repo. Reconsider per server if Docker's signing /
   SBOM / auto-update become more valuable than build control.
+- **Q11 (GitHub MCP Registry submission — deferred to Phase 1+):**
+  [github.com/mcp](https://github.com/mcp) is a fourth distribution
+  channel parallel to the Docker MCP Catalog (§4.3), targeting GitHub
+  Copilot users with an in-UI install button. Submission mechanics
+  (registry-repo PR vs `.well-known/mcp` auto-discovery vs other) are
+  not researched here; the per-server SDD that owns the first listing
+  fetches the current submission contract and either lands assets in
+  `packages/homelab-mcp-{server}/github-mcp-registry/` (mirroring §4.3's
+  layout) or in this repo's `.well-known/` directory, whichever the
+  registry requires. License/test gates equivalent to C1–C4 apply.
 
 
 ## 12. Test Plan
