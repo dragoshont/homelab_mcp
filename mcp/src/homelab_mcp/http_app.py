@@ -194,22 +194,38 @@ def create_app(
 
     @app.middleware("http")
     async def auth_mw(request: Request, call_next):
-        # SDD: public-openapi.
-        # Canonicalise the path BEFORE comparing against the public
-        # set. Two reasons:
-        # 1. Trailing slashes — some Ingress controllers append `/`,
-        #    we want /healthz/ to match /healthz.
-        # 2. MF-7 (path-confusion attack) — `request.url.path` is
-        #    Starlette's parsed component (URL-decoded once, split
-        #    from query). It does NOT collapse `..` segments, so a
-        #    request like `GET /openapi.json/../mcp` arrives with
-        #    `path == "/openapi.json/../mcp"` (literal). Exact match
-        #    against PUBLIC_ENDPOINTS rejects it -> falls through to
-        #    auth -> 401. Verified by
-        #    test_path_traversal_request_path_is_literal.
-        # 3. MF-8 (method confusion) — listing (path, METHOD) tuples
-        #    means POST /openapi.json is NOT public (FastAPI returns
-        #    405 because no POST handler is registered).
+        # SDD: public-openapi (out/Rivet/sdd/public-openapi).
+        #
+        # Two-step exact-match gate:
+        # 1. Canonicalise the path with rstrip("/") so /healthz/ and
+        #    /healthz are treated identically (some ingress controllers
+        #    append a trailing slash; this is the only ambiguity we
+        #    accept).
+        # 2. Look up (canon, METHOD) in PUBLIC_ENDPOINTS. Anything
+        #    that doesn't match exactly falls through to auth.
+        #
+        # Why exact-match (not startswith): forbidding a permissive
+        # check is the structural defence against MF-7
+        # (path-confusion). startswith("/openapi.json") would let
+        # /openapi.json/../mcp bypass auth on framework versions that
+        # don't normalise `..`. With exact-match, the bypass list is
+        # closed under string equality and any traversal payload
+        # either:
+        #   - canonicalises to a non-public path (e.g. starlette/httpx
+        #     normalise `/openapi.json/../mcp` -> `/mcp`), so auth
+        #     runs; or
+        #   - preserves the literal traversed path (`/openapi.json/../mcp`),
+        #     which is also != `/openapi.json`, so auth runs.
+        # The guarantee holds without depending on framework
+        # normalisation behaviour. See tests:
+        #   - test_path_traversal_canonical_path_not_in_public_set
+        #     (asserts the bypass invariant directly)
+        #   - test_auth_mw_does_not_use_prefix_match (regression
+        #     guard against startswith-style code)
+        #
+        # MF-8 (method confusion) is closed by the second tuple
+        # element: POST /openapi.json is not in PUBLIC_ENDPOINTS, so
+        # POST always falls through to auth -> 401 when token is set.
         canon = request.url.path.rstrip("/") or "/"
         method = request.method.upper()
         if (canon, method) in PUBLIC_ENDPOINTS:
@@ -636,6 +652,18 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
         methods=["GET", "HEAD"],
         include_in_schema=False,
         name="openapi_json",
+    )
+    # Trailing-slash variant — some ingress controllers append `/`,
+    # and the auth middleware bypass already canonicalises with
+    # rstrip("/") so the bypass fires for both forms. We need the
+    # route registered for both so the request actually reaches a
+    # handler instead of 404. Mirrors /healthz/ + /metrics/ above.
+    app.add_api_route(
+        "/openapi.json/",
+        openapi_json,
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+        name="openapi_json_trailing_slash",
     )
 
 

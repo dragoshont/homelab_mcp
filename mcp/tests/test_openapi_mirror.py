@@ -237,7 +237,13 @@ def test_invalid_tool_name_skipped(caplog):
     paths = [getattr(r, "path", None) for r in app.routes]
     assert "/ok_name" in paths
     # No path containing a slash beyond the leading one.
-    bad = [p for p in paths if p and p.count("/") > 1 and not p.startswith("/healthz") and not p.startswith("/metrics")]
+    bad = [
+        p for p in paths
+        if p and p.count("/") > 1
+        and not p.startswith("/healthz")
+        and not p.startswith("/metrics")
+        and not p.startswith("/openapi.json")  # SDD: public-openapi — trailing-slash variant is registered
+    ]
     assert bad == [], f"unexpected nested-path routes: {bad}"
 
 
@@ -634,24 +640,35 @@ async def test_openapi_json_trailing_slash_public():
     """SDD: public-openapi MP-2.
 
     Some Ingress controllers append a trailing slash. /openapi.json/
-    must canonicalise to /openapi.json and stay public.
+    must be reachable without authentication. The auth middleware
+    canonicalises with rstrip("/") and consults PUBLIC_ENDPOINTS, so
+    `/openapi.json/` matches `/openapi.json` and the bypass fires.
+
+    R2 verify (ADV-007): the previous version of this test allowed
+    200/307/404, which made it vacuous (any of the three would pass
+    even on a regression). This version asserts the bypass actually
+    fires AND a real response body comes back — i.e. the middleware
+    let it through AND something downstream served the doc.
     """
     app = create_app(mcp_obj=_make_stub_mcp(), auth_token="s3cret")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://t"
     ) as c:
-        r = await c.get("/openapi.json/", follow_redirects=False)
-    # The auth middleware MUST allow this through; downstream routing
-    # may then 404/307/200 depending on Starlette's redirect_slashes,
-    # but it must NOT be 401 (auth-blocked).
-    assert r.status_code != 401, (
-        f"trailing-slash /openapi.json/ blocked by auth (status={r.status_code}); "
-        "MP-2 contract violated"
+        # follow_redirects=True so a 307 from FastAPI's slash
+        # redirect is followed (also without auth — the second hop
+        # hits /openapi.json which is also public). The terminal
+        # response must be 200 with a parseable doc body.
+        r = await c.get("/openapi.json/", follow_redirects=True)
+    assert r.status_code == 200, (
+        f"trailing-slash /openapi.json/ ended at status={r.status_code}; "
+        "expected 200 (auth bypass fires AND doc handler responds). "
+        "If you see 401, the middleware bypass isn't matching "
+        "trailing-slash variants. If you see 404, the route isn't "
+        "registered for both forms — investigate add_api_route in "
+        "_register_openapi_mirror."
     )
-    # In current FastAPI default config, trailing-slash on a non-slash
-    # route either redirects (307) or 200s after redirect. Both are
-    # acceptable as long as the user is not blocked at auth.
-    assert r.status_code in (200, 307, 404), r.text
+    body = r.json()
+    assert body.get("openapi", "").startswith("3."), body
 
 
 @pytest.mark.asyncio
@@ -706,30 +723,85 @@ async def test_openapi_json_post_method_blocked():
 
 
 @pytest.mark.asyncio
-async def test_openapi_json_path_traversal_literal_blocks_auth_bypass():
-    """SDD: public-openapi MF-7 (path-confusion attack).
+async def test_openapi_json_path_traversal_via_raw_asgi():
+    """SDD: public-openapi MF-7 (path-confusion attack — true test).
 
-    A request line like `GET /openapi.json/../mcp HTTP/1.1` reaches
-    the auth middleware with `request.url.path == "/openapi.json/../mcp"`
-    (literal — Starlette does NOT collapse `..`). The exact-match
-    against PUBLIC_ENDPOINTS rejects it, so it falls through to auth
-    and returns 401.
+    R2 verify caught that the previous version of this test sent
+    `/openapi.json/../mcp` via httpx, which normalises traversal
+    client-side BEFORE the request hits the ASGI app. The ASGI app
+    received `/mcp`, not the literal traversal — so the test only
+    proved that `/mcp` requires auth (a tautology).
 
-    A buggy implementation that used `path.startswith("/openapi.json")`
-    would incorrectly bypass auth and allow the request through.
+    This rewrite drives the ASGI app directly with a hand-built
+    scope, so we control the path EXACTLY. We send the literal
+    `/openapi.json/../mcp` AS-IS to the middleware. The middleware
+    must reject the bypass (the canonicalised path is not in
+    PUBLIC_ENDPOINTS) and fall through to auth -> 401.
+
+    This is the genuine MF-7 test: it verifies the auth gate behaves
+    correctly under a hostile, non-normalised input that a buggy
+    proxy could let through.
     """
     app = create_app(mcp_obj=_make_stub_mcp(), auth_token="s3cret")
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://t"
-    ) as c:
-        # No Authorization header. The "../mcp" tail makes the
-        # canonical path NOT equal to /openapi.json, so the public
-        # bypass must NOT fire.
-        r = await c.get("/openapi.json/../mcp")
-    assert r.status_code == 401, (
-        f"path-confusion bypass: GET /openapi.json/../mcp returned "
-        f"{r.status_code}; expected 401 (auth must reject)"
-    )
+
+    received: list = []
+
+    async def collect_response(message):
+        received.append(message)
+
+    async def empty_receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    # Hostile literal: traversal NOT pre-normalised by any client.
+    # We list multiple variants to cover (a) the /../ form, (b) the
+    # %2E%2E URL-encoded form (Starlette decodes path during routing
+    # but we test the middleware's view), and (c) a sub-path.
+    hostile_paths = [
+        "/openapi.json/../mcp",
+        "/openapi.json/%2E%2E/mcp",
+        "/openapi.json/foo",
+    ]
+    for path in hostile_paths:
+        received.clear()
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+            "root_path": "",
+        }
+        await app(scope, empty_receive, collect_response)
+        # Find the http.response.start message.
+        starts = [m for m in received if m["type"] == "http.response.start"]
+        assert len(starts) == 1, (
+            f"path {path!r}: expected one response.start, got "
+            f"{[m['type'] for m in received]}"
+        )
+        status = starts[0]["status"]
+        # Critical assertion: hostile traversal/sub-path MUST NOT
+        # reach a 200 (would mean public bypass fired or a tool
+        # handler ran). It MUST be 401 (auth blocked) — that's the
+        # only correct outcome since:
+        #   * the canonical path is not in PUBLIC_ENDPOINTS, so
+        #     bypass doesn't fire;
+        #   * no handler matches the hostile path either, so we
+        #     fall through to the bearer check, which fails (no
+        #     header present), so 401.
+        assert status == 401, (
+            f"path-confusion regression: GET {path!r} returned "
+            f"status={status}; expected 401 (auth must reject). "
+            "If you see 200, PUBLIC_ENDPOINTS is matching too "
+            "permissively (e.g. via startswith). If you see 404, "
+            "the auth middleware is letting the request through "
+            "to routing — that's the bypass we're guarding against."
+        )
 
 
 @pytest.mark.asyncio
@@ -812,23 +884,18 @@ async def test_path_traversal_canonical_path_not_in_public_set():
     async def catchall(full_path: str):
         return {"got": full_path}
 
-    # Payloads chosen to exercise traversal-toward-PRIVATE paths
-    # (mcp, hello tool, etc.). Traversal that canonicalises to
-    # another public path (e.g. /openapi.json/../healthz -> /healthz)
-    # is not a regression: /healthz was already public, and the
-    # bypass evaluates the canonical path, so the user lands on a
-    # path they could have requested directly. The MF-7 threat
-    # model is "URL looks public but reaches private surface".
-    payloads = [
-        "/openapi.json/../mcp",        # toward MCP transport
-        "/openapi.json/%2E%2E/mcp",    # URL-encoded variant
-        "/openapi.json/../hello",      # toward a tool
-        "/openapi.json/foo",           # extra segment, no traversal
-        "/openapi.json/.",             # self-reference
-        "/openapi.json//",             # double-slash before normalisation
+    payloads_with_target = [
+        # (raw url, intended-target — the path the URL is *trying* to
+        #  reach if traversal/sub-path semantics are honoured).
+        ("/openapi.json/../mcp", "/mcp"),
+        ("/openapi.json/%2E%2E/mcp", "/mcp"),
+        ("/openapi.json/../hello", "/hello"),
+        ("/openapi.json/foo", "/openapi.json/foo"),
+        ("/openapi.json//", "/openapi.json"),  # only a slash artefact
+        ("/openapi.json/.", "/openapi.json"),  # self-reference
     ]
-    private_path_set = {"/mcp", "/hello"}
-    for url in payloads:
+    public_path_set = {p for p, _m in PUBLIC_ENDPOINTS}
+    for url, target in payloads_with_target:
         captured.clear()
         async with AsyncClient(
             transport=ASGITransport(app=probe), base_url="http://t"
@@ -838,30 +905,32 @@ async def test_path_traversal_canonical_path_not_in_public_set():
             f"middleware capture broke for {url!r}: {captured!r}"
         )
         canon = captured[0].rstrip("/") or "/"
-        # The critical invariant: a traversal payload MUST NOT land
-        # on a public canonical path UNLESS that canonical path is
-        # one the user could have requested directly. Equivalently,
-        # the payload must NOT canonicalise to a public path while
-        # CARRYING traversal/extra-segment intent. We assert this in
-        # the negative: if the canonical path matches a known PRIVATE
-        # path that the URL *named*, that's a real bypass risk;
-        # if it matches a public path, the user was always allowed.
-        assert canon not in private_path_set or canon != "/openapi.json", (
-            f"path-confusion regression: payload {url!r} canonicalised "
-            f"to {canon!r}; this would bypass auth on a private path."
-        )
-        # And: under no circumstances should a payload that named
-        # /openapi.json end up canonicalising to /openapi.json AND
-        # NOT to its true literal — that would mean the framework
-        # silently rewrote the path while preserving the public
-        # match. Currently this can't happen (rstrip is the only
-        # canonicalisation we apply, and the framework either keeps
-        # the literal or rewrites to a different path).
-        if "/.." in url or "%2E%2E" in url:
-            assert canon != "/openapi.json", (
-                f"payload {url!r} carried traversal intent but "
-                f"canonicalised to {canon!r}; the bypass list would "
-                "fire incorrectly."
+
+        # Property: a payload INTENDING to reach a private path
+        # (target is /mcp, /hello, etc.) MUST NOT canonicalise to
+        # any public path. If it did, the bypass would fire on a
+        # request the user is using to reach private surface — that's
+        # MF-7 in textbook form.
+        intended_private = target not in public_path_set
+        if intended_private:
+            assert canon not in public_path_set, (
+                f"path-confusion regression: payload {url!r} (intending "
+                f"to reach {target!r}, a private path) canonicalised "
+                f"to {canon!r}, which IS in the public set "
+                f"{public_path_set}. Auth would be bypassed."
+            )
+
+        # Property 2: a payload that's just a slash/dot artefact of
+        # /openapi.json (target == /openapi.json itself, e.g. trailing
+        # slash, /., //) is harmless because the user is reaching the
+        # public endpoint they could have typed directly — but we
+        # still record this so a regression that re-routes
+        # /openapi.json/. to a NEW handler would be visible. This
+        # part of the test is documentation, not enforcement.
+        if target == "/openapi.json":
+            assert canon in (target, target + "/", "/openapi.json"), (
+                f"slash-artefact payload {url!r} canonicalised to "
+                f"unexpected {canon!r}; review Starlette/httpx behaviour."
             )
 
 
@@ -899,6 +968,43 @@ async def test_openapi_json_degraded_with_token_returns_503_unauth():
     assert r.status_code == 503, r.text
     body = r.json()
     assert "tool manager" in body["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_auth_mw_does_not_use_prefix_match():
+    """SDD: public-openapi (R2 ADV-007 regression guard).
+
+    R2 verify caught a hypothetical regression: if `auth_mw`
+    devolved from exact (canon, METHOD) match to
+    `path.startswith("/openapi.json")` the public bypass would fire
+    on `/openapi.json-evil`, `/openapi.jsonblahblah`, etc.
+
+    This test fires several near-match paths that share the
+    `/openapi.json` prefix but are NOT in PUBLIC_ENDPOINTS, and
+    asserts auth blocks them. A startswith-style implementation
+    would let them through (returning 200 from a near-named handler
+    or 404, but never 401 — because auth bypass would fire).
+    """
+    app = create_app(mcp_obj=_make_stub_mcp(), auth_token="s3cret")
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        # All these share the /openapi.json prefix but are distinct
+        # paths. Under exact-match: auth runs -> 401.
+        # Under startswith: bypass fires -> not 401.
+        for near in (
+            "/openapi.jsonx",
+            "/openapi.json-evil",
+            "/openapi.json.bak",
+            "/openapi.json2",
+        ):
+            r = await c.get(near)
+            assert r.status_code == 401, (
+                f"path {near!r} returned {r.status_code}; expected 401. "
+                "If the implementation uses path.startswith() instead of "
+                "exact match, near-prefix paths leak through the public "
+                "bypass. Re-examine auth_mw's path comparison."
+            )
 
 
 @pytest.mark.asyncio
