@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "1.1",
+  "name": "public-openapi",
+  "issue": 0,
+  "createdAt": "2026-05-03T20:21:06.1685772\u002B00:00",
+  "currentStep": 11,
+  "steps": [
+    {
+      "id": 0,
+      "name": "Flight Precheck",
+      "artifact": "state.json",
+      "instructions": "Create feature branch. Verify workspace is clean.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:21:06.1692197\u002B00:00"
+    },
+    {
+      "id": 1,
+      "name": "Context Preflight",
+      "artifact": "context.json",
+      "instructions": "Run rivet context --intent code and save the contract to context.json. Review workflow recommendations, deterministic knowledge, and completeness before writing code.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:21:30.7873395\u002B00:00",
+      "evidence": "context.json generated; 8/8 sources succeeded; no prior report (Python repo, scan modes N/A)"
+    },
+    {
+      "id": 2,
+      "name": "Verify Contract",
+      "artifact": "contract.md",
+      "instructions": "Write MUST PASS, MUST FAIL, and Integration Points. Save to contract.md.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:22:57.2864852\u002B00:00",
+      "evidence": "contract.md written: 6 MUST PASS (MP-1..6) covering normative \u002B degraded \u002B no-regression paths, 8 MUST FAIL (MF-1..8) covering auth gates \u002B path-confusion \u002B method-confusion, 6 integration points enumerated, out-of-scope items called out (docs UI stays disabled, HMAC/IP not part of this slice)."
+    },
+    {
+      "id": 3,
+      "name": "Spec/PRD",
+      "artifact": "spec.md",
+      "instructions": "Write specification and design document with measurable acceptance criteria. Save to spec.md and design.md.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:24:07.0247867\u002B00:00",
+      "evidence": "spec.md (problem, user-capability sentence per RC-15, 12 measurable acceptance criteria with check commands, non-goals) \u002B design.md (PUBLIC_ENDPOINTS frozenset of (path,method) tuples, canonicalisation argument addressing MF-7 path-confusion, rejected alternatives documented, 7 new test cases enumerated, rollout \u002B rollback plan)"
+    },
+    {
+      "id": 4,
+      "name": "Adversarial Spec",
+      "gate": "spec-gate",
+      "artifact": "as-findings.json",
+      "instructions": "Attack spec with AS-001..AS-008. Save findings to as-findings.json.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:26:41.0616027\u002B00:00",
+      "evidence": "Adversarial spec loop: 2 iterations, 5 findings (1 Critical AS-005, 2 High AS-003/AS-002, 1 Medium AS-004, 1 Low AS-007), all resolved in iteration 2. Iteration 2 re-attack clean. as-findings.json written."
+    },
+    {
+      "id": 5,
+      "name": "Implement",
+      "gate": "implement-gate",
+      "instructions": "HUMAN REVIEW GATE: Review the spec, contract, and adversarial findings before proceeding. Run \u0027rivet sdd step --approve\u0027 to begin implementation.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:33:47.7513584\u002B00:00",
+      "evidence": "PUBLIC_ENDPOINTS frozenset of (path,method) tuples introduced; auth_mw rewritten with canonicalisation\u002Bexact-match. /openapi.json route registered with both GET and HEAD methods. 10 new tests \u002B 2 updated tests. Test suite: 226/226 pass. Commit: 569f705."
+    },
+    {
+      "id": 6,
+      "name": "Doc Scaffolding",
+      "gate": "doc-gate",
+      "instructions": "Update or scaffold documentation for the configured target(s). Uncommitted .md changes on the mapped target path are required.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:33:53.7896943\u002B00:00",
+      "evidence": "scaffolded; Auto-scaffolded 1 doc file(s)"
+    },
+    {
+      "id": 7,
+      "name": "Build \u002B Test",
+      "artifact": "build-result.json",
+      "instructions": "Run build and tests. Save results to build-result.json.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:36:14.9125174\u002B00:00",
+      "evidence": "build-result.json: 226/226 pass, 21.69s, 10 new tests \u002B 2 modified"
+    },
+    {
+      "id": 8,
+      "name": "Grade Contract",
+      "artifact": "contract-grade.json",
+      "instructions": "Grade each MUST PASS/FAIL item. Save to contract-grade.json.",
+      "status": "done",
+      "completedAt": "2026-05-03T20:36:50.9012079\u002B00:00",
+      "evidence": "contract-grade.json: 6/6 MUST PASS, 8/8 MUST FAIL, all evidenced by named tests, overall PASS"
+    },
+    {
+      "id": 9,
+      "name": "Adversarial Verify",
+      "gate": "verify-gate",
+      "artifact": "verify-result.json",
+      "instructions": "CLI runs rivet verify --scope branch automatically. Triple adversarial required.",
+      "status": "done",
+      "completedAt": "2026-05-03T21:23:45.2863442\u002B00:00",
+      "evidence": "5 verify rounds, all findings addressed. Suite 229/229. R5 clean."
+    },
+    {
+      "id": 10,
+      "name": "F10 Compliance",
+      "artifact": "f10-compliance.md",
+      "instructions": "Auto-generated by rivet sdd status.",
+      "status": "done",
+      "completedAt": "2026-05-03T21:24:01.5984990\u002B00:00"
+    }
+  ],
+  "rigor": "full",
+  "docTargets": [
+    {
+      "type": "feature",
+      "name": "public-openapi-mirror"
+    }
+  ],
+  "skipCount": 0,
+  "trackedFiles": [],
+  "trackedTests": [],
+  "specValidated": true,
+  "verifyRoundsConsumed": {
+    "9": 2
+  },
+  "checksum": "301d665ebe3ba79f3929b32a8c1d1e9fcf6404b29971119919b5f59a8be44b62"
+}

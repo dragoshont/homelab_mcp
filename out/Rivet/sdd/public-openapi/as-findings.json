@@ -1,0 +1,45 @@
+{
+  "feature": "public-openapi",
+  "iterations": 2,
+  "status": "APPROVED",
+  "rules_applied": ["AS-001", "AS-002", "AS-003", "AS-004", "AS-005", "AS-006", "AS-007", "AS-008"],
+  "findings": [
+    {
+      "code": "AS-005",
+      "severity": "Critical",
+      "iteration": 1,
+      "finding": "Acceptance criteria AC-7 ('OpenWebUI displays homelab tools — manual UI check OR DB query confirming non-empty tool_servers_state') and AC-8 ('end-to-end smoke test via cli to /api/chat/completions') were not reproducibly measurable. AC-7 named no specific table/column; AC-8 had no concrete payload or curl command. ADV-007 risk: a test could pass while the connection silently 'works' but produces empty results.",
+      "resolution": "Replaced AC-7 with an exact kubectl-exec command that queries config.tool_server.connections, asserts enable=True, and inspects last_error. Replaced AC-8 with a complete curl-to-/api/chat/completions invocation including model, message, tools_required, and a jq assertion on the resulting tool_call.function.name. Both are now copy-pasteable."
+    },
+    {
+      "code": "AS-003",
+      "severity": "High",
+      "iteration": 1,
+      "finding": "Hidden coupling: OpenWebUI's tool-server importer caches discovery results inside its config row. After the /openapi.json endpoint becomes reachable, the connection's cached tool list may still be empty until OpenWebUI re-runs discovery. The original rollout assumed 'auto-rediscovers' without specifying when or how — actual behaviour is on pod boot or explicit Verify click.",
+      "resolution": "Added explicit re-discovery step to rollout (kubectl delete pod openwebui-open-webui-0). Documented the alternative UI-driven Verify path. AC-7 verification now checks the cache state directly via DB query."
+    },
+    {
+      "code": "AS-002",
+      "severity": "High",
+      "iteration": 1,
+      "finding": "MF-7 (path-confusion attack) was specified as 'GET /openapi.json/../mcp returns 401' assuming Starlette returns the literal path string in request.url.path. The behaviour is actually correct on current Starlette but is integration-fantasy if treated as axiom — a future Starlette/uvicorn upgrade could normalise paths and silently regress the gate.",
+      "resolution": "Added a runtime probe test (test_path_traversal_request_path_is_literal) that asserts request.url.path == '/openapi.json/../mcp' and the URL-encoded variant. If Starlette ever normalises, the probe fails loudly and forces re-design rather than silently accepting bypass."
+    },
+    {
+      "code": "AS-004",
+      "severity": "Medium",
+      "iteration": 1,
+      "finding": "Boundary condition: Starlette auto-dispatches HEAD onto GET routes, but the auth middleware sees method=HEAD before dispatch. The original PUBLIC_ENDPOINTS proposal listed (path, GET) tuples only; HEAD requests would fall through to auth and get 401, breaking client probes (curl -I) and load balancers that use HEAD for health checks.",
+      "resolution": "Added explicit ('/openapi.json', 'HEAD') and HEAD variants for /healthz and /metrics to PUBLIC_ENDPOINTS. Added test_openapi_json_head_method_public test."
+    },
+    {
+      "code": "AS-007",
+      "severity": "Low",
+      "iteration": 1,
+      "finding": "No latency constraint stated for /openapi.json. While the doc is cached, a regression (e.g. accidentally rebuilding on every request) wouldn't be caught by functional tests.",
+      "resolution": "Added AC-14: cached doc serialization p99 < 10ms on the deployed SKU (1 vCPU, 2GB RAM, ARM64). Includes the exact loop command for measurement."
+    }
+  ],
+  "rules_passed_clean_iter2": ["AS-001", "AS-006", "AS-008"],
+  "iter2_summary": "Re-attack of revised spec found no new findings. AC-1..AC-14 all measurable with explicit commands. Rollback plan present (revert deployment.yaml tag bump). No new dependencies. No non-falsifiable language remaining."
+}

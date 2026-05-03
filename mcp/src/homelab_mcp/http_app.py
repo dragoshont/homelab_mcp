@@ -45,6 +45,45 @@ _BASE_RESERVED_PATHS = frozenset(
     {"/healthz", "/metrics", "/openapi.json"}
 )
 
+# SDD: public-openapi (out/Rivet/sdd/public-openapi).
+#
+# Public endpoints — bypass the bearer middleware. Listed as
+# (canonical_path, METHOD) tuples so a future addition cannot
+# accidentally make POST/PUT/DELETE on `/openapi.json` public (MF-8).
+#
+# Why each path is here:
+#   - /healthz, /metrics: K8s probes / scrape jobs that MUST work
+#     without secret rotation (Phase 1 contract).
+#   - /openapi.json: tool-server discovery endpoint. OpenWebUI's
+#     TOOL_SERVER_CONNECTIONS importer issues an unauthenticated GET
+#     (auth_type: none in helmrelease.yaml). The doc only describes
+#     the API surface (tool names + JSON schemas) — no data, no
+#     mutations, no credentials. Tool **execution** (POST /<tool>)
+#     and the MCP transport (/mcp/*) remain bearer-gated. This is
+#     the same boundary mcpo (the previous tool-server) drew.
+#
+# HEAD entries are explicit: Starlette auto-dispatches HEAD onto GET
+# routes, but the auth middleware sees method == "HEAD" before that
+# dispatch, so it must be in this set or HEAD probes get 401.
+#
+# OPTIONS entries: Phase 1's middleware bypass was method-agnostic;
+# clients that pre-flight CORS or run LB OPTIONS probes against
+# /healthz, /metrics relied on that. We preserve the behaviour
+# explicitly. /openapi.json gets OPTIONS too so OpenWebUI's importer
+# (and any future browser-based consumer) can pre-flight without auth.
+# Verify rivet-verify ADV-003 (sdd: public-openapi).
+PUBLIC_ENDPOINTS: frozenset[tuple[str, str]] = frozenset({
+    ("/healthz", "GET"),
+    ("/healthz", "HEAD"),
+    ("/healthz", "OPTIONS"),
+    ("/metrics", "GET"),
+    ("/metrics", "HEAD"),
+    ("/metrics", "OPTIONS"),
+    ("/openapi.json", "GET"),
+    ("/openapi.json", "HEAD"),
+    ("/openapi.json", "OPTIONS"),
+})
+
 
 def _reserved_paths_for(mcp_obj) -> frozenset[str]:
     """Reserved URL paths for tool registration on this MCP instance.
@@ -155,10 +194,41 @@ def create_app(
 
     @app.middleware("http")
     async def auth_mw(request: Request, call_next):
-        # Probes always open so K8s liveness/readiness never depend on
-        # secret rotation. rstrip("/") to also accept trailing-slash
-        # variants used by some Ingress controllers.
-        if request.url.path.rstrip("/") in ("/healthz", "/metrics"):
+        # SDD: public-openapi (out/Rivet/sdd/public-openapi).
+        #
+        # Two-step exact-match gate:
+        # 1. Canonicalise the path with rstrip("/") so /healthz/ and
+        #    /healthz are treated identically (some ingress controllers
+        #    append a trailing slash; this is the only ambiguity we
+        #    accept).
+        # 2. Look up (canon, METHOD) in PUBLIC_ENDPOINTS. Anything
+        #    that doesn't match exactly falls through to auth.
+        #
+        # Why exact-match (not startswith): forbidding a permissive
+        # check is the structural defence against MF-7
+        # (path-confusion). startswith("/openapi.json") would let
+        # /openapi.json/../mcp bypass auth on framework versions that
+        # don't normalise `..`. With exact-match, the bypass list is
+        # closed under string equality and any traversal payload
+        # either:
+        #   - canonicalises to a non-public path (e.g. starlette/httpx
+        #     normalise `/openapi.json/../mcp` -> `/mcp`), so auth
+        #     runs; or
+        #   - preserves the literal traversed path (`/openapi.json/../mcp`),
+        #     which is also != `/openapi.json`, so auth runs.
+        # The guarantee holds without depending on framework
+        # normalisation behaviour. See tests:
+        #   - test_path_traversal_canonical_path_not_in_public_set
+        #     (asserts the bypass invariant directly)
+        #   - test_auth_mw_does_not_use_prefix_match (regression
+        #     guard against startswith-style code)
+        #
+        # MF-8 (method confusion) is closed by the second tuple
+        # element: POST /openapi.json is not in PUBLIC_ENDPOINTS, so
+        # POST always falls through to auth -> 401 when token is set.
+        canon = request.url.path.rstrip("/") or "/"
+        method = request.method.upper()
+        if (canon, method) in PUBLIC_ENDPOINTS:
             return await call_next(request)
         if auth_token:
             hdr = request.headers.get("authorization", "")
@@ -561,8 +631,11 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
     # BUG-004).
     app.state.openapi_mirror_degraded = list_failed
 
-    @app.get("/openapi.json", include_in_schema=False)
-    async def openapi_json():
+    async def openapi_json(request: Request):
+        # SDD: public-openapi — reachable without auth (see PUBLIC_ENDPOINTS
+        # and auth_mw). HEAD support is explicit so curl -I and load-balancer
+        # probes work; Starlette does not auto-dispatch HEAD onto GET-only
+        # routes registered via @app.get, so we register both methods here.
         if getattr(app.state, "openapi_mirror_degraded", False):
             return JSONResponse(
                 {
@@ -572,6 +645,26 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
                 status_code=503,
             )
         return app.state.openapi_doc
+
+    app.add_api_route(
+        "/openapi.json",
+        openapi_json,
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+        name="openapi_json",
+    )
+    # Trailing-slash variant — some ingress controllers append `/`,
+    # and the auth middleware bypass already canonicalises with
+    # rstrip("/") so the bypass fires for both forms. We need the
+    # route registered for both so the request actually reaches a
+    # handler instead of 404. Mirrors /healthz/ + /metrics/ above.
+    app.add_api_route(
+        "/openapi.json/",
+        openapi_json,
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+        name="openapi_json_trailing_slash",
+    )
 
 
 def run_uvicorn() -> None:
