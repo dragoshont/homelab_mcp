@@ -203,15 +203,32 @@ def run_uvicorn() -> None:
             file=sys.stderr,
         )
         raise SystemExit(2)
+    # Verify ADV-002 (R4): an in-range int is required. Out-of-range
+    # values pass int() but only fail later inside uvicorn.bind() with
+    # a less actionable traceback.
+    if not (1 <= port <= 65535):
+        print(
+            f"HOMELAB_MCP_HTTP_PORT is out of range (1..65535): {port}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
-    auth_token = os.environ.get("HOMELAB_MCP_HTTP_TOKEN") or None
-    if auth_token is not None:
-        # Strip whitespace/newlines that commonly creep in from
-        # secret-file sourcing (e.g. `kubectl get secret ... -o
-        # jsonpath=... | base64 -d` often emits a trailing newline).
-        # Without this strip, the env-side has '\n' but the presented
-        # header value (already stripped in auth_mw) doesn't, so all
-        # clients get a permanent 401 with no diagnostic.
-        auth_token = auth_token.strip() or None
+    # Auth token handling: distinguish "unset / empty" (= no auth)
+    # from "set but whitespace-only" (= misconfigured secret;
+    # fail-closed). Without this distinction the latter would silently
+    # disable auth and expose /mcp/* — verify ADV-004 (R4).
+    raw_token = os.environ.get("HOMELAB_MCP_HTTP_TOKEN")
+    if raw_token is None or raw_token == "":
+        auth_token = None
+    else:
+        auth_token = raw_token.strip()
+        if not auth_token:
+            print(
+                "HOMELAB_MCP_HTTP_TOKEN is set but contains only whitespace; "
+                "refusing to start with auth disabled. Unset the variable to "
+                "run without auth, or set it to a non-blank token.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
     app = create_app(auth_token=auth_token)
     uvicorn.run(app, host=host, port=port, log_level="info")

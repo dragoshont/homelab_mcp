@@ -183,6 +183,62 @@ async def test_run_uvicorn_strips_token_whitespace(monkeypatch):
     assert captured.get("ran") is True
 
 
+def test_run_uvicorn_whitespace_only_token_fails_closed(monkeypatch):
+    """Verify ADV-004 (R4): a token that is set but contains only
+    whitespace MUST refuse to start. Silently dropping to no-auth
+    would expose /mcp/* on misconfigured deployments.
+    """
+    monkeypatch.setenv("HOMELAB_MCP_HTTP_TOKEN", "   \n")
+    monkeypatch.setenv("HOMELAB_MCP_HTTP_PORT", "8080")
+
+    ran = {"called": False}
+
+    def fake_uvicorn_run(*_a, **_k):
+        ran["called"] = True
+
+    import uvicorn as _uvicorn
+    monkeypatch.setattr(_uvicorn, "run", fake_uvicorn_run)
+    monkeypatch.setattr(
+        "homelab_mcp.http_app.create_app", lambda **_: object()
+    )
+
+    from homelab_mcp.http_app import run_uvicorn
+    with pytest.raises(SystemExit) as exc:
+        run_uvicorn()
+    assert exc.value.code == 2
+    assert ran["called"] is False, (
+        "uvicorn.run was called with auth silently disabled — "
+        "fail-closed contract violated"
+    )
+
+
+@pytest.mark.parametrize("bad_port", ["-1", "0", "65536", "70000"])
+def test_run_uvicorn_out_of_range_port_rejected(monkeypatch, bad_port):
+    """Verify ADV-002 (R4): in-range int validation. Out-of-range
+    values pass int() but fail later inside uvicorn.bind() with a
+    less actionable traceback.
+    """
+    monkeypatch.setenv("HOMELAB_MCP_HTTP_PORT", bad_port)
+    monkeypatch.delenv("HOMELAB_MCP_HTTP_TOKEN", raising=False)
+
+    ran = {"called": False}
+
+    def fake_uvicorn_run(*_a, **_k):
+        ran["called"] = True
+
+    import uvicorn as _uvicorn
+    monkeypatch.setattr(_uvicorn, "run", fake_uvicorn_run)
+    monkeypatch.setattr(
+        "homelab_mcp.http_app.create_app", lambda **_: object()
+    )
+
+    from homelab_mcp.http_app import run_uvicorn
+    with pytest.raises(SystemExit) as exc:
+        run_uvicorn()
+    assert exc.value.code == 2
+    assert ran["called"] is False
+
+
 @pytest.mark.asyncio
 async def test_healthz_zero_tools_returns_503():
     """Verify BUG-004: empty tool registry must signal degraded.
