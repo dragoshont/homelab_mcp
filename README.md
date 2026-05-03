@@ -68,29 +68,147 @@ docker run --rm -p 8080:8080 \
   -e PLEX_URL=http://plex:32400  -e PLEX_TOKEN=... \
   -e QBT_URL=http://qbittorrent:8080 -e QBT_USER=... -e QBT_PASS=... \
   # ...one URL+credential pair per upstream you want to expose...
-  ghcr.io/dragoshont/homelab-mcp:v1.1.1
+  ghcr.io/dragoshont/homelab-mcp:main
 ```
 
-OpenAPI surface is then on `http://localhost:8080/openapi.json` (133 paths).
+Three protocol surfaces come up on port 8080 from one process:
 
-### Wire it into OpenWebUI
+| Path | Purpose |
+| --- | --- |
+| `POST /mcp` | Native MCP Streamable HTTP — for VS Code, Copilot, Claude Desktop |
+| `GET /openapi.json` + `POST /<tool_name>` | mcpo-compatible OpenAPI mirror — for OpenWebUI |
+| `GET /healthz`, `GET /metrics` | K8s probes + Prometheus |
 
-OpenWebUI consumes the proxy declaratively via `TOOL_SERVER_CONNECTIONS`:
+Stdio MCP is also available with `--entrypoint homelab-mcp` for SSH-tunneled clients.
+
+### Optional: bearer auth
+
+If you set `HOMELAB_MCP_HTTP_TOKEN=<some-secret>`, requests to `/mcp`,
+`/openapi.json`, and `POST /<tool>` require
+`Authorization: Bearer <some-secret>`. `/healthz` and `/metrics` stay
+open so probes never depend on secret rotation. Leave the env var unset
+for trusted-network deployments (the homelab default — auth is added at
+the network edge, e.g. Cloudflare Access).
+
+### Use it from a client
+
+#### VS Code (`mcp.json`)
+
+VS Code (with GitHub Copilot or the MCP extension) reads
+`.vscode/mcp.json`. Direct HTTP transport:
+
+```json
+{
+  "servers": {
+    "homelab": {
+      "type": "http",
+      "url": "http://homelab-mcp.local:8080/mcp"
+    }
+  }
+}
+```
+
+With auth:
+
+```json
+{
+  "servers": {
+    "homelab": {
+      "type": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${input:homelab_token}" }
+    }
+  },
+  "inputs": [
+    { "id": "homelab_token", "type": "promptString", "password": true,
+      "description": "homelab MCP bearer token" }
+  ]
+}
+```
+
+If the host can't reach the container directly (e.g. it's only on a
+private cluster), wrap it over SSH with stdio:
+
+```json
+{
+  "servers": {
+    "homelab": {
+      "type": "stdio",
+      "command": "ssh",
+      "args": ["homelab", "docker", "run", "--rm", "-i",
+               "--entrypoint", "homelab-mcp",
+               "ghcr.io/dragoshont/homelab-mcp:main"]
+    }
+  }
+}
+```
+
+#### GitHub Copilot CLI
+
+Copilot's CLI reads the same VS Code `mcp.json`. After adding the
+server, run `copilot` and the tools appear under `/tools homelab`.
+You can also register globally in `~/.config/github-copilot/mcp.json`.
+
+#### Claude Desktop
+
+Edit `claude_desktop_config.json` (Settings → Developer →
+Edit Config):
+
+```json
+{
+  "mcpServers": {
+    "homelab": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://homelab-mcp.local:8080/mcp"]
+    }
+  }
+}
+```
+
+`mcp-remote` is the standard bridge that lets Claude Desktop (which
+speaks stdio MCP only) talk to a Streamable-HTTP server. Add
+`--header "Authorization:Bearer <token>"` after the URL if auth is on.
+Restart Claude Desktop for the config to apply.
+
+#### OpenWebUI (`TOOL_SERVER_CONNECTIONS`)
+
+OpenWebUI uses the OpenAPI mirror, declared as a deployment env var
+(do **not** add it through the UI — it persists in the PVC and gets
+wiped on PVC recreation):
 
 ```json
 [
   {
     "url": "http://homelab-mcp:8080",
-    "path": "/openapi.json",
+    "path": "openapi.json",
     "auth_type": "none",
+    "key": "",
     "config": { "enable": true, "access_control": null },
     "info": { "name": "homelab", "description": "homelab tools" }
   }
 ]
 ```
 
-Set this as a deployment env var (don't add the connection through the
-UI — it gets wiped on PVC recreation).
+If auth is on, set `auth_type: "bearer"` and put the token in `key`.
+The 128-tool function-calling cap on most chat models is handled with
+OpenWebUI's `function_name_filter_list` (use `!tool_name` entries to
+block, e.g. `"!unifi_block,!kube_restart,..."`).
+
+#### Plain `curl`
+
+```bash
+# List tools (mcpo-compatible OpenAPI doc)
+curl -s http://homelab-mcp.local:8080/openapi.json | jq '.paths | keys'
+
+# Call a tool
+curl -s -X POST http://homelab-mcp.local:8080/host_status \
+  -H 'content-type: application/json' -d '{}'
+
+# With auth
+curl -s -X POST http://mcp.example.com/host_status \
+  -H 'authorization: Bearer <token>' \
+  -H 'content-type: application/json' -d '{}'
+```
 
 ### Configuration contract
 
@@ -105,6 +223,8 @@ server is public-safe and reusable. Required env vars at startup:
 | `CF_DEFAULT_ZONE` | Default zone for read tools |
 | `HOMELAB_MCP_READONLY` | `true` to refuse all mutating tools (default) |
 | `HOMELAB_MCP_AUDIT_LOG` | Path to the append-only audit log |
+| `HOMELAB_MCP_HTTP_HOST` / `HOMELAB_MCP_HTTP_PORT` | Bind for the FastAPI app (default `0.0.0.0:8080`) |
+| `HOMELAB_MCP_HTTP_TOKEN` | Optional bearer token. When set, gates `/mcp`, `/openapi.json`, and `POST /<tool>`. `/healthz` + `/metrics` remain open. Whitespace-only is fail-closed (server refuses to start). |
 
 Per-service URL + API-key env vars (e.g., `SONARR_URL` + `SONARR_API_KEY`)
 are optional — tools whose service isn't configured return a structured
