@@ -65,13 +65,23 @@ _BASE_RESERVED_PATHS = frozenset(
 # HEAD entries are explicit: Starlette auto-dispatches HEAD onto GET
 # routes, but the auth middleware sees method == "HEAD" before that
 # dispatch, so it must be in this set or HEAD probes get 401.
+#
+# OPTIONS entries: Phase 1's middleware bypass was method-agnostic;
+# clients that pre-flight CORS or run LB OPTIONS probes against
+# /healthz, /metrics relied on that. We preserve the behaviour
+# explicitly. /openapi.json gets OPTIONS too so OpenWebUI's importer
+# (and any future browser-based consumer) can pre-flight without auth.
+# Verify rivet-verify ADV-003 (sdd: public-openapi).
 PUBLIC_ENDPOINTS: frozenset[tuple[str, str]] = frozenset({
     ("/healthz", "GET"),
     ("/healthz", "HEAD"),
+    ("/healthz", "OPTIONS"),
     ("/metrics", "GET"),
     ("/metrics", "HEAD"),
+    ("/metrics", "OPTIONS"),
     ("/openapi.json", "GET"),
     ("/openapi.json", "HEAD"),
+    ("/openapi.json", "OPTIONS"),
 })
 
 

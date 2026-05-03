@@ -3,7 +3,7 @@
   "name": "public-openapi",
   "issue": 0,
   "createdAt": "2026-05-03T20:21:06.1685772\u002B00:00",
-  "currentStep": 5,
+  "currentStep": 9,
   "steps": [
     {
       "id": 0,
@@ -55,28 +55,36 @@
       "name": "Implement",
       "gate": "implement-gate",
       "instructions": "HUMAN REVIEW GATE: Review the spec, contract, and adversarial findings before proceeding. Run \u0027rivet sdd step --approve\u0027 to begin implementation.",
-      "status": "pending"
+      "status": "done",
+      "completedAt": "2026-05-03T20:33:47.7513584\u002B00:00",
+      "evidence": "PUBLIC_ENDPOINTS frozenset of (path,method) tuples introduced; auth_mw rewritten with canonicalisation\u002Bexact-match. /openapi.json route registered with both GET and HEAD methods. 10 new tests \u002B 2 updated tests. Test suite: 226/226 pass. Commit: 569f705."
     },
     {
       "id": 6,
       "name": "Doc Scaffolding",
       "gate": "doc-gate",
       "instructions": "Update or scaffold documentation for the configured target(s). Uncommitted .md changes on the mapped target path are required.",
-      "status": "pending"
+      "status": "done",
+      "completedAt": "2026-05-03T20:33:53.7896943\u002B00:00",
+      "evidence": "scaffolded; Auto-scaffolded 1 doc file(s)"
     },
     {
       "id": 7,
       "name": "Build \u002B Test",
       "artifact": "build-result.json",
       "instructions": "Run build and tests. Save results to build-result.json.",
-      "status": "pending"
+      "status": "done",
+      "completedAt": "2026-05-03T20:36:14.9125174\u002B00:00",
+      "evidence": "build-result.json: 226/226 pass, 21.69s, 10 new tests \u002B 2 modified"
     },
     {
       "id": 8,
       "name": "Grade Contract",
       "artifact": "contract-grade.json",
       "instructions": "Grade each MUST PASS/FAIL item. Save to contract-grade.json.",
-      "status": "pending"
+      "status": "done",
+      "completedAt": "2026-05-03T20:36:50.9012079\u002B00:00",
+      "evidence": "contract-grade.json: 6/6 MUST PASS, 8/8 MUST FAIL, all evidenced by named tests, overall PASS"
     },
     {
       "id": 9,
@@ -106,5 +114,5 @@
   "trackedTests": [],
   "specValidated": true,
   "verifyRoundsConsumed": {},
-  "checksum": "2698265ea549a7ea563d72d6ddbba0ffe4aa10330681c3fe98ff9575eabdf6b4"
+  "checksum": "d5fef706f7d825af5042216d32c6058e8e557619b400e8675447e38fc6f96f68"
 }

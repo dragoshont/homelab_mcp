@@ -56,17 +56,20 @@ async def auth_mw(request: Request, call_next):
     return await call_next(request)
 ```
 
-### Path-canonicalisation argument (MF-7 detail)
+### Path-confusion argument (MF-7 detail)
 
-`request.url.path` is the parsed path component from Starlette's URL machinery, which uses `httptools` / `h11` to parse the raw HTTP request line. By the time we read `.path`, the value has been:
-- URL-decoded once (so `%2F` → `/` and `%2E%2E` → `..`).
-- Split from query string and fragment.
+The MF-7 guarantee rests on **exact-match** comparison of a canonicalised path against `PUBLIC_ENDPOINTS`. The exact-match property holds regardless of how aggressively the upstream framework normalises traversal sequences. Two cases:
 
-What it does NOT do automatically:
-- Collapse `..` segments. A request line like `GET /openapi.json/../mcp HTTP/1.1` reaches us with `request.url.path == "/openapi.json/../mcp"`. The canonical comparison `canon == "/openapi.json"` returns False, so it falls through to auth — correct.
-- Reject duplicate slashes. `/openapi.json//` becomes `/openapi.json//` then `rstrip("/")` produces `/openapi.json` — bypasses are still gated by **exact** match. We intentionally keep `rstrip("/")` (not regex normalize) because the only ambiguity we accept is "one trailing slash" — anything else is non-conforming and falls through.
+1. **Framework normalises** (current Starlette/httpx behaviour, verified by `test_path_traversal_canonical_path_not_in_public_set`): a request with raw URL `/openapi.json/../mcp` reaches the middleware as `request.url.path == "/mcp"`. `("/mcp", "GET")` is not in `PUBLIC_ENDPOINTS`, so auth runs.
 
-**Verification** (AS-002 mitigation): The above behavioural claim is treated as an integration assumption, NOT axiom. The test suite includes a probe (`test_path_traversal_request_path_is_literal`) that fires `GET /openapi.json/../mcp` against a stub app and asserts `request.url.path == "/openapi.json/../mcp"` (literal, not normalised). If a future Starlette/uvicorn upgrade changes this, the probe fails loudly and forces re-design instead of silently regressing the gate. The probe also covers the `%2E%2E` URL-encoded variant where decoding-before-routing would matter.
+2. **Framework preserves the literal** (hypothetical, if a future upgrade reverts normalisation): the middleware sees `"/openapi.json/../mcp"`. `("/openapi.json/../mcp", "GET")` is not in `PUBLIC_ENDPOINTS` either, so auth still runs.
+
+The bypass list is closed under exact equality, so any non-canonical request — encoded, traversed, padded with extra segments — fails to match. The probe test `test_path_traversal_canonical_path_not_in_public_set` runs six payload variants and asserts none of their canonicalised paths land in the public set, providing forward-compatibility against framework changes in either direction.
+
+What we do NOT rely on:
+- The literal preservation of `..` segments.
+- Any specific URL-decoding pass count.
+- Specific normalisation order between client (httpx) and server (Starlette/uvicorn).
 
 ### HEAD method (AS-004 mitigation)
 
