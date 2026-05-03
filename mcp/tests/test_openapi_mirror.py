@@ -436,6 +436,22 @@ async def test_tool_internal_type_error_returns_500():
     assert r.status_code == 500, r.text
 
 
+@pytest.mark.asyncio
+async def test_post_tool_invalid_utf8_json_body_400():
+    """R2 (ADV-008): invalid UTF-8 in a JSON body must surface as 400,
+    not let UnicodeDecodeError escape to 500."""
+    app = create_app(mcp_obj=_make_stub_mcp())
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.post(
+            "/hello",
+            content=b"\xff",
+            headers={"content-type": "application/json"},
+        )
+    assert r.status_code == 400, r.text
+
+
 def test_recursive_defs_no_dangling_refs():
     """ADV-002: when $defs has a self-reference, _inline_defs must NOT
     leave dangling `#/$defs/X` refs in the output without keeping $defs."""

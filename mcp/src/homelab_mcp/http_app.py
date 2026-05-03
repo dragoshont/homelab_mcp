@@ -335,7 +335,10 @@ def _make_tool_handler(tool):
         if raw:
             try:
                 payload = await request.json()
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+                # JSON parse failures and body-decoding failures
+                # (e.g. invalid UTF-8 with content-type:
+                # application/json) must surface as 400, not 500.
                 return JSONResponse(
                     {"error": "invalid JSON body"}, status_code=400
                 )
