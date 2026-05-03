@@ -161,8 +161,15 @@ def create_app(
         )
 
     # Mount FastMCP's native Streamable HTTP transport.
+    #
+    # FastMCP's streamable_http_app() returns a Starlette app whose
+    # canonical endpoint is at the path configured by
+    # ``mcp.settings.streamable_http_path`` (default: ``/mcp``). We
+    # mount it at root so the public URL is exactly that path -
+    # mounting at ``/mcp`` would result in ``/mcp/mcp``, which the
+    # MCP spec does not define and which standard clients won't hit.
     streamable = mcp_obj.streamable_http_app()
-    app.mount("/mcp", streamable)
+    app.mount("/", streamable)
 
     return app
 
@@ -189,5 +196,13 @@ def run_uvicorn() -> None:
         raise SystemExit(2)
 
     auth_token = os.environ.get("HOMELAB_MCP_HTTP_TOKEN") or None
+    if auth_token is not None:
+        # Strip whitespace/newlines that commonly creep in from
+        # secret-file sourcing (e.g. `kubectl get secret ... -o
+        # jsonpath=... | base64 -d` often emits a trailing newline).
+        # Without this strip, the env-side has '\n' but the presented
+        # header value (already stripped in auth_mw) doesn't, so all
+        # clients get a permanent 401 with no diagnostic.
+        auth_token = auth_token.strip() or None
     app = create_app(auth_token=auth_token)
     uvicorn.run(app, host=host, port=port, log_level="info")

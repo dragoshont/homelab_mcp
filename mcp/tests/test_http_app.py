@@ -54,9 +54,10 @@ async def test_unauth_mcp_is_401_when_token_set():
 async def test_authenticated_mcp_post_passes_middleware():
     """Companion to the 401 test (AS-007 mitigation, F-007 in as-findings).
 
-    A correct token MUST get past the middleware. We don't assert a
-    specific success status because Streamable HTTP can return 200,
-    202, or even 400 for an empty body — but it MUST NOT be 401.
+    A correct token MUST get past the middleware AND reach the mounted
+    /mcp app. ADV-007 hardening: explicitly reject 404/405, which would
+    indicate the mount itself is broken (test passing for the wrong
+    reason).
     """
     app = create_app(auth_token="s3cret")
     async with AsyncClient(
@@ -69,6 +70,10 @@ async def test_authenticated_mcp_post_passes_middleware():
         )
     assert r.status_code != 401, (
         "auth middleware blocked a request with the correct token"
+    )
+    assert r.status_code not in (404, 405), (
+        f"/mcp mount missing or wrong (status={r.status_code}): "
+        "the middleware passed but routing is broken"
     )
 
 
@@ -134,6 +139,42 @@ async def test_lowercase_bearer_scheme_is_accepted():
     assert r.status_code != 401, (
         "lowercase 'bearer' rejected — auth must accept any-case scheme"
     )
+    assert r.status_code not in (404, 405), (
+        f"/mcp mount missing or wrong (status={r.status_code})"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_uvicorn_strips_token_whitespace(monkeypatch):
+    """Verify ADV-004 (R2): env-sourced tokens often carry trailing
+    newlines from secret extraction. The configured token must be
+    stripped at startup so legitimate clients can authenticate.
+    """
+    captured = {}
+
+    def fake_create_app(*, auth_token=None, **_):
+        captured["token"] = auth_token
+        # Return a minimal ASGI app so uvicorn.run gets a callable.
+        from fastapi import FastAPI
+        return FastAPI()
+
+    def fake_uvicorn_run(app, **_):
+        captured["ran"] = True
+
+    monkeypatch.setenv("HOMELAB_MCP_HTTP_TOKEN", "s3cret\n")
+    monkeypatch.setenv("HOMELAB_MCP_HTTP_PORT", "8080")
+    monkeypatch.setattr("homelab_mcp.http_app.create_app", fake_create_app)
+
+    import uvicorn as _uvicorn
+    monkeypatch.setattr(_uvicorn, "run", fake_uvicorn_run)
+
+    from homelab_mcp.http_app import run_uvicorn
+    run_uvicorn()
+
+    assert captured["token"] == "s3cret", (
+        f"token not stripped: {captured.get('token')!r}"
+    )
+    assert captured.get("ran") is True
 
 
 @pytest.mark.asyncio
