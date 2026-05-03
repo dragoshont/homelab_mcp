@@ -472,3 +472,86 @@ def test_recursive_defs_no_dangling_refs():
         # can resolve.
         assert "$defs" in out
         assert "Node" in out["$defs"]
+
+# ---------------------------------------------------------------------------
+# Verify R3 fixes (gpt-5.3-codex adversarial findings, round 3)
+# ---------------------------------------------------------------------------
+
+
+def test_inline_defs_preserves_ref_siblings():
+    """ADV-002 (R3): when a $ref node has sibling keywords like
+    description or default, _inline_defs must preserve them after
+    inlining (JSON Schema 2020-12 + OpenAPI carry semantic meaning)."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "x": {"$ref": "#/$defs/A", "description": "keep me"}
+        },
+        "$defs": {"A": {"type": "string"}},
+    }
+    out = _inline_defs(schema)
+    assert out["properties"]["x"]["description"] == "keep me"
+    assert out["properties"]["x"]["type"] == "string"
+
+
+@pytest.mark.asyncio
+async def test_post_tool_non_text_content_preserves_envelope():
+    """ADV-002 (R3): a tool returning non-text MCP content (e.g.
+    ImageContent) must surface a content-list envelope, not be
+    silently degraded to {'text': repr}."""
+    from mcp.types import ImageContent
+
+    m = FastMCP("t")
+
+    @m.tool()
+    async def img():
+        return ImageContent(
+            type="image", data="AAAA", mimeType="image/png"
+        )
+
+    app = create_app(mcp_obj=m)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.post("/img", json={})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Must NOT degrade to opaque text repr.
+    assert "content" in body, body
+    assert any(
+        item.get("type") == "image" for item in body["content"]
+    ), body
+
+
+def test_openapi_degraded_when_list_tools_fails():
+    """BUG-004 (R3): if _tool_manager.list_tools() raises at startup,
+    /openapi.json must signal degraded state (503) so OpenWebUI's
+    importer doesn't treat the empty registry as a valid answer."""
+    class TM:
+        def list_tools(self):
+            raise RuntimeError("boom")
+
+    class Settings:
+        streamable_http_path = "/mcp"
+
+    class M:
+        name = "t"
+        _tool_manager = TM()
+        settings = Settings()
+
+        def streamable_http_app(self):
+            from fastapi import FastAPI as _FA
+            return _FA()
+
+    app = create_app(mcp_obj=M())
+    from httpx import ASGITransport, AsyncClient
+    import asyncio
+
+    async def _hit():
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            return await c.get("/openapi.json")
+
+    r = asyncio.run(_hit())
+    assert r.status_code == 503, r.text

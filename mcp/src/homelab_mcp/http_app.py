@@ -260,6 +260,18 @@ def _inline_defs(schema: dict) -> dict:
                     seen.add(key)
                     inlined = walk(copy.deepcopy(target))
                     seen.discard(key)
+                    if isinstance(inlined, dict):
+                        # Preserve sibling keywords (description,
+                        # default, title, deprecated, examples, etc.)
+                        # on the original $ref node — JSON Schema
+                        # 2020-12 allows them and OpenAPI carries
+                        # semantic meaning (verify R3 / ADV-002).
+                        merged = dict(inlined)
+                        for k, v in node.items():
+                            if k == "$ref":
+                                continue
+                            merged.setdefault(k, walk(v))
+                        return merged
                     return inlined
             return {k: walk(v) for k, v in node.items()}
         if isinstance(node, list):
@@ -284,41 +296,46 @@ def _inline_defs(schema: dict) -> dict:
 def _unwrap_call_tool_result(result: Any) -> Any:
     """Convert a FastMCP tool-run result to a JSON-friendly value.
 
-    FastMCP versions vary in shape:
-
-    - Newer FastMCP returns ``CallToolResult`` (object with
-      ``structuredContent`` and ``content`` attributes).
-    - 1.x ``Tool.run(..., convert_result=True)`` returns
-      ``list[TextContent | ImageContent | ...]`` directly.
-    - Some tool functions return dicts/strings/numbers verbatim
-      (when called without ``convert_result``).
-
     Preference order:
     1. ``result.structuredContent`` if present.
-    2. Iterate ``result.content`` (or ``result`` itself if list) and
-       concatenate ``.text`` fields; try ``json.loads`` first,
-       fall back to ``{"text": ...}``.
-    3. ``str(result)`` envelope as last resort.
+    2. If content list is all-text, concatenate ``.text`` and try
+       ``json.loads``; fall back to ``{"text": ...}``.
+    3. If content is mixed/non-text (e.g. ImageContent), return a list
+       of ``{"type": ..., "text"|"data": ...}`` envelopes preserving
+       every item (verify R3 / ADV-002).
+    4. ``str(result)`` envelope as last resort.
     """
     structured = getattr(result, "structuredContent", None)
     if structured is not None:
         return structured
-    # Either result.content (CallToolResult) or result itself (list).
     content = getattr(result, "content", None)
     if content is None and isinstance(result, list):
         content = result
     if isinstance(content, list) and content:
-        texts = [
-            getattr(item, "text", None)
-            for item in content
-            if getattr(item, "text", None) is not None
-        ]
-        if texts:
-            joined = "".join(texts)
+        all_text = all(
+            getattr(item, "text", None) is not None for item in content
+        )
+        if all_text:
+            joined = "".join(
+                getattr(item, "text", "") for item in content
+            )
             try:
                 return json.loads(joined)
             except (json.JSONDecodeError, ValueError):
                 return {"text": joined}
+        # Mixed / non-text: preserve every item as a JSON envelope so
+        # clients can consume image/audio/resource content too.
+        out = []
+        for item in content:
+            envelope: dict = {
+                "type": getattr(item, "type", type(item).__name__),
+            }
+            for attr in ("text", "data", "mimeType", "uri", "name"):
+                v = getattr(item, attr, None)
+                if v is not None:
+                    envelope[attr] = v
+            out.append(envelope)
+        return {"content": out}
     return {"text": str(result)}
 
 
@@ -458,10 +475,12 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
     tm = getattr(mcp_obj, "_tool_manager", None)
     registered: list = []
     reserved = _reserved_paths_for(mcp_obj)
+    list_failed = False
     if tm is None or not callable(getattr(tm, "list_tools", None)):
         logger.warning(
             "tool manager unavailable; OpenAPI mirror skipped"
         )
+        list_failed = True
     else:
         try:
             tools = list(tm.list_tools())
@@ -470,6 +489,7 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
                 "list_tools failed; OpenAPI mirror skipped"
             )
             tools = []
+            list_failed = True
         for tool in tools:
             name = getattr(tool, "name", None)
             if not isinstance(name, str) or not _TOOL_NAME_RE.match(name):
@@ -493,9 +513,23 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
     app.state.openapi_doc = _build_openapi_doc(
         registered, reserved_paths=reserved
     )
+    # When the tool manager couldn't be enumerated at startup, the
+    # mirror is in a degraded state. Surface it via /openapi.json so
+    # clients (OpenWebUI's importer) don't treat the empty registry
+    # as a valid "this server has zero tools" answer (verify R3 /
+    # BUG-004).
+    app.state.openapi_mirror_degraded = list_failed
 
     @app.get("/openapi.json", include_in_schema=False)
     async def openapi_json():
+        if getattr(app.state, "openapi_mirror_degraded", False):
+            return JSONResponse(
+                {
+                    "error": "tool manager unavailable",
+                    "openapi_doc": app.state.openapi_doc,
+                },
+                status_code=503,
+            )
         return app.state.openapi_doc
 
 
