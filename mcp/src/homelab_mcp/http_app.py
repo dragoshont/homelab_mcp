@@ -387,9 +387,12 @@ def _make_tool_handler(tool):
                     status_code=400,
                 )
             # Last-resort envelope. Traceback intentionally NOT in body.
+            # Generic body keeps internal URLs / file paths / upstream
+            # payloads out of HTTP responses (CR review on PR #16).
+            # Server-side log retains the full exception for diagnostics.
             logger.exception("tool %r raised", tool.name)
             return JSONResponse(
-                {"error": f"{type(exc).__name__}: {exc}"},
+                {"error": "internal server error"},
                 status_code=500,
             )
         unwrapped = _unwrap_call_tool_result(result)
@@ -400,12 +403,7 @@ def _make_tool_handler(tool):
                 "unserializable result from tool %r", tool.name
             )
             return JSONResponse(
-                {
-                    "error": (
-                        f"unserializable result: "
-                        f"{type(exc).__name__}: {exc}"
-                    )
-                },
+                {"error": "internal server error"},
                 status_code=500,
             )
 
@@ -486,13 +484,18 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
         Mirrors ``_tool_count``'s shape: prefer ``list_tools()`` if
         callable; on failure or when not callable, fall back to the
         private ``_tools`` dict so we still expose tools instead of
-        going dark.
+        going dark. If the primary accessor RAISED (not just absent),
+        the returned list_failed flag stays True so /openapi.json
+        signals degradation consistently with /healthz (CR review on
+        PR #16: don't let the fallback silently mask a real failure).
         """
+        primary_failed = False
         list_fn = getattr(tm, "list_tools", None)
         if callable(list_fn):
             try:
                 return list(list_fn()), False
             except Exception:
+                primary_failed = True
                 logger.exception(
                     "list_tools failed; trying private _tools fallback"
                 )
@@ -501,8 +504,8 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
         if tm_tools is not None:
             try:
                 if hasattr(tm_tools, "values"):
-                    return list(tm_tools.values()), False
-                return list(tm_tools), False
+                    return list(tm_tools.values()), primary_failed
+                return list(tm_tools), primary_failed
             except Exception:
                 logger.exception("_tools fallback also failed")
         return [], True
