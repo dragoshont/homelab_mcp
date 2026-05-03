@@ -1026,16 +1026,93 @@ async def test_options_on_public_paths_not_blocked_by_auth():
     ) as c:
         for path in ("/healthz", "/metrics", "/openapi.json"):
             r = await c.options(path)
+            # The middleware bypass MUST fire (status != 401). What
+            # routing then does is implementation-detail: if no OPTIONS
+            # handler is registered, Starlette returns 404 or 405. We
+            # assert "auth let the request through", not "a specific
+            # route handles it". That's the contract Phase 1 had:
+            # middleware open, routing whatever it likes.
             assert r.status_code != 401, (
                 f"OPTIONS {path} blocked by auth (status={r.status_code}); "
-                "regression vs Phase 1. Add ('{path}', 'OPTIONS') to "
-                "PUBLIC_ENDPOINTS."
+                f"middleware bypass missed OPTIONS for {path}. Phase 1 "
+                "was method-agnostic; PUBLIC_ENDPOINTS must include "
+                f"({path}, 'OPTIONS')."
             )
+            # Critically: routing did NOT accept it as a public GET
+            # handler (which would let OPTIONS sneak through to data).
+            # Acceptable: 404 (no handler) or 405 (method not allowed).
+            assert r.status_code in (404, 405), (
+                f"OPTIONS {path} returned {r.status_code}; expected 404 "
+                "or 405. If you see 200, Starlette is promoting OPTIONS "
+                "to a GET handler — review route registrations."
+            )
+
+
+@pytest.mark.asyncio
+async def test_multi_trailing_slash_does_not_leak_private_paths():
+    """SDD: public-openapi R3 verify (ADV-002).
+
+    `auth_mw` canonicalises with rstrip("/"), which strips ANY number
+    of trailing slashes. A request like `/openapi.json///` therefore
+    canonicalises to `/openapi.json` and the public bypass fires.
+    Routing then sees the literal `/openapi.json///` (with N>1 slashes)
+    and fails to match (the trailing-slash route is `/openapi.json/`,
+    one slash, not three). Result: 404.
+
+    This is acceptable IFF the same multi-slash trick cannot be used
+    to reach a PRIVATE path while still producing a public-canonical
+    string. Concretely:
+      * `/mcp///` -> rstrip -> `/mcp` (not public; auth runs) — OK
+      * `/openapi.json/../mcp///` -> framework normalises to `/mcp`
+        (not public; auth runs) — OK
+      * `/openapi.json///` -> rstrip -> `/openapi.json` (public;
+        bypass fires; routing 404s — no private path reached) — OK
+    The 404 vs 401 distinction is an information leak the operator
+    accepts: the spec endpoint is public anyway, so confirming its
+    existence reveals nothing.
+    """
+    app = create_app(mcp_obj=_make_stub_mcp(), auth_token="s3cret")
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        # Multi-slash on PRIVATE path: must 401.
+        r1 = await c.post("/hello///", json={"name": "x"})
+        assert r1.status_code == 401, (
+            f"multi-slash on private path returned {r1.status_code}; "
+            "expected 401 (auth runs because /hello is not public)"
+        )
+        # Multi-slash on /mcp: must 401.
+        r2 = await c.post("/mcp///", json={})
+        assert r2.status_code == 401, (
+            f"multi-slash on /mcp returned {r2.status_code}; "
+            "expected 401"
+        )
+        # Multi-slash on PUBLIC path: bypass fires, routing 404s.
+        # Critical: response status is NOT 200 (didn't reach handler
+        # via fuzzy match) and NOT 401 (bypass did fire). It's 404.
+        r3 = await c.get("/openapi.json///")
+        assert r3.status_code == 404, (
+            f"multi-slash on public path returned {r3.status_code}; "
+            "expected 404 (bypass fires but routing has no exact match "
+            "for the multi-slash literal). If you see 200, routing has "
+            "started accepting fuzzy slash matches — review the route "
+            "registrations."
+        )
+
+
+
     """SDD: public-openapi (frozen surface).
 
     Pin PUBLIC_ENDPOINTS so accidental additions surface in code
     review. Adding a new public path requires updating this test
     and the SDD docs in lock-step.
+
+    R3 verify (ADV-007): the previous version of this test had
+    accidentally been merged into the OPTIONS test (missing its own
+    `def` line + decorator), so the frozen-surface assertion was
+    only reachable if the OPTIONS loop completed without failure —
+    a classic ADV-007 dead-code-after-failure pattern. This is now
+    a standalone (non-async) test that always runs.
     """
     from homelab_mcp.http_app import PUBLIC_ENDPOINTS
 

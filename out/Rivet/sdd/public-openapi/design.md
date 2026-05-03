@@ -75,6 +75,27 @@ What we do NOT rely on:
 
 FastAPI registers routes with the methods list passed in (`methods=["GET"]` for our handler). Starlette **does** auto-dispatch `HEAD` to `GET` handlers (returning headers but no body) — this is the documented Starlette behaviour. The auth middleware runs BEFORE Starlette's dispatch decision, so it sees `request.method == "HEAD"`. Therefore we MUST list `("/openapi.json", "HEAD")` explicitly in `PUBLIC_ENDPOINTS`. The test suite covers this: `test_openapi_json_head_method_public`.
 
+### Method narrowing on /healthz and /metrics (R3 verify ADV-003)
+
+Phase 1's middleware bypass for `/healthz` and `/metrics` was **method-agnostic** — any HTTP method (POST, PUT, DELETE, PATCH, …) bypassed auth on those paths. The new `(path, METHOD)` tuple set narrows that to GET / HEAD / OPTIONS only, which is the only set of methods that have any operational meaning on a probe endpoint.
+
+Behavioural delta vs Phase 1:
+- **POST/PUT/DELETE/PATCH on `/healthz` or `/metrics`** with no auth header: was 404 (no handler), now 401 (auth blocks).
+- This is intentional: nothing legitimate sends those methods to probe endpoints, and 401 is a clearer signal of "you sent something wrong" than 404.
+- If a load balancer or monitoring agent is mis-configured to POST/PUT, it should be fixed; the new behaviour surfaces the misconfiguration instead of swallowing it as 404.
+- Tested by `test_options_on_public_paths_not_blocked_by_auth` (positive: GET/HEAD/OPTIONS reach routing) and (implicitly) by absence-of-bypass for non-listed methods in `PUBLIC_ENDPOINTS`.
+
+### Multi-trailing-slash bypass scoping (R3 verify ADV-002)
+
+`auth_mw` canonicalises with `rstrip("/")`, which strips ANY number of trailing slashes. So `/openapi.json///` canonicalises to `/openapi.json`, and the public bypass fires. Routing then sees the literal `/openapi.json///` and fails to match (no exact route for the multi-slash form). The response is 404.
+
+Why this is acceptable:
+1. **No private surface is reachable through this trick.** Multi-slash on a private path (e.g. `/mcp///`) canonicalises to `/mcp`, which is not in `PUBLIC_ENDPOINTS`, so auth runs and returns 401.
+2. **No data leak.** A 404 on `/openapi.json///` reveals exactly what a 200 on `/openapi.json` would: that the endpoint exists. The endpoint is public anyway.
+3. **The 404 vs 401 distinction is informational only.** It tells an attacker "you canonicalised to a public path but routing didn't recognise the form" — the same information they'd get by typo-ing any other request.
+
+Tested by `test_multi_trailing_slash_does_not_leak_private_paths`, which covers private + private-via-MCP + public payloads with N>1 trailing slashes.
+
 ### Why not "open `/openapi.json` only when no token is set"?
 
 Tempting but wrong: the homelab proxy ALWAYS sets a token (HOMELAB_MCP_HTTP_TOKEN is required by the deployment). Conditional behaviour would mean "the spec is public unless you secured the deployment", which is the opposite of the desired contract. The spec endpoint is by-design discovery surface — auth status of execution is independent.
