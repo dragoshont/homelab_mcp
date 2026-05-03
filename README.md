@@ -34,10 +34,17 @@ the read tokens for the upstream APIs.
 
 ## Quickstart
 
-The image is a single monolith that wraps a stdio MCP server with
-[`mcpo`](https://github.com/open-webui/mcpo), so it speaks **OpenAPI over
-HTTP** and can be consumed by anything that talks HTTP — including
-OpenWebUI, agentic frameworks, and `curl`.
+The image is a single monolith running a native FastAPI HTTP transport
+on port 8080. It exposes **three surfaces from one process**:
+
+- `POST /mcp/*` — native [Streamable HTTP MCP](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http)
+- `GET /openapi.json` + `POST /<tool_name>` — `mcpo`-compatible OpenAPI
+  tool-server (consumed by OpenWebUI's `TOOL_SERVER_CONNECTIONS`)
+- `GET /healthz` + `GET /metrics` — K8s probes + Prometheus
+
+So it can be consumed by anything that speaks MCP, OpenAPI, or plain
+`curl`. Stdio MCP is also available via `--entrypoint homelab-mcp`
+(used by the SSH host wrapper).
 
 ### Pull the image
 
