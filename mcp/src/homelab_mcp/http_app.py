@@ -242,7 +242,10 @@ def _inline_defs(schema: dict) -> dict:
     """
     defs = schema.get("$defs") or schema.get("definitions") or {}
     if not defs:
-        return schema
+        # Verify R4 / ADV-005: even when there are no defs, return a
+        # deep copy so the cached doc is decoupled from later mutation
+        # of the source tool's parameters dict.
+        return copy.deepcopy(schema)
 
     seen: set[str] = set()
 
@@ -476,38 +479,73 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
     registered: list = []
     reserved = _reserved_paths_for(mcp_obj)
     list_failed = False
-    if tm is None or not callable(getattr(tm, "list_tools", None)):
+
+    def _enumerate(tm) -> tuple[list, bool]:
+        """Enumerate tools with fallback to ``_tools`` (verify R4).
+
+        Mirrors ``_tool_count``'s shape: prefer ``list_tools()`` if
+        callable; on failure or when not callable, fall back to the
+        private ``_tools`` dict so we still expose tools instead of
+        going dark.
+        """
+        list_fn = getattr(tm, "list_tools", None)
+        if callable(list_fn):
+            try:
+                return list(list_fn()), False
+            except Exception:
+                logger.exception(
+                    "list_tools failed; trying private _tools fallback"
+                )
+        # Fallback: private _tools dict.
+        tm_tools = getattr(tm, "_tools", None)
+        if tm_tools is not None:
+            try:
+                if hasattr(tm_tools, "values"):
+                    return list(tm_tools.values()), False
+                return list(tm_tools), False
+            except Exception:
+                logger.exception("_tools fallback also failed")
+        return [], True
+
+    if tm is None:
         logger.warning(
             "tool manager unavailable; OpenAPI mirror skipped"
         )
         list_failed = True
+        tools: list = []
     else:
-        try:
-            tools = list(tm.list_tools())
-        except Exception:
-            logger.exception(
-                "list_tools failed; OpenAPI mirror skipped"
+        tools, list_failed = _enumerate(tm)
+
+    seen_names: set[str] = set()
+    for tool in tools:
+        name = getattr(tool, "name", None)
+        if not isinstance(name, str) or not _TOOL_NAME_RE.match(name):
+            logger.warning("skip tool %r: invalid HTTP name", name)
+            continue
+        if f"/{name}" in reserved:
+            logger.warning(
+                "skip tool %r: collides with reserved path", name
             )
-            tools = []
+            continue
+        if name in seen_names:
+            # Verify R4 / ADV-001: duplicate tool names would let
+            # add_api_route keep both handlers while _build_openapi_doc
+            # advertises only one. Refuse the second — startup
+            # surfaces the collision via /openapi.json (degraded).
+            logger.error(
+                "duplicate tool name %r; OpenAPI mirror degraded", name
+            )
             list_failed = True
-        for tool in tools:
-            name = getattr(tool, "name", None)
-            if not isinstance(name, str) or not _TOOL_NAME_RE.match(name):
-                logger.warning("skip tool %r: invalid HTTP name", name)
-                continue
-            if f"/{name}" in reserved:
-                logger.warning(
-                    "skip tool %r: collides with reserved path", name
-                )
-                continue
-            app.add_api_route(
-                f"/{name}",
-                _make_tool_handler(tool),
-                methods=["POST"],
-                name=f"tool_{name}",
-                include_in_schema=False,
-            )
-            registered.append(tool)
+            continue
+        seen_names.add(name)
+        app.add_api_route(
+            f"/{name}",
+            _make_tool_handler(tool),
+            methods=["POST"],
+            name=f"tool_{name}",
+            include_in_schema=False,
+        )
+        registered.append(tool)
 
     # Cache the doc on app.state so tests can override it.
     app.state.openapi_doc = _build_openapi_doc(
