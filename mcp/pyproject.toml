@@ -10,17 +10,30 @@ dependencies = [
     "dirigera>=1.2.7",
     "pyatv>=0.16.0",
     "aiounifi>=83,<=85",
+    # Phase 1 HTTP transport (SDD: fastapi-phase1) replaces mcpo.
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
 ]
 
 [project.optional-dependencies]
 # Required to drive bundle composition via a YAML config file. The CSV
 # env (HOMELAB_MCP_BUNDLE_DOMAINS) does not need PyYAML.
 bundle = ["pyyaml>=6.0"]
+# Used by the HTTP transport tests.
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
 
 [project.scripts]
 # Bundle entry: registers all five domains. Drop-in for the
 # pre-Phase-1.0 monolith console script.
 homelab-mcp = "homelab_mcp.server:main"
+# Phase 1 HTTP transport (SDD: fastapi-phase1). Replaces mcpo as the
+# container ENTRYPOINT. Same singleton tool registry as the stdio
+# entry above; selection is via container --entrypoint at run time.
+homelab-mcp-http = "homelab_mcp.http_app:run_uvicorn"
 # Phase 1.6 bundle multiplexer: registers the subset of domains
 # resolved from HOMELAB_MCP_BUNDLE_DOMAINS (CSV) or
 # HOMELAB_MCP_BUNDLE_CONFIG (YAML), falling back to all five.

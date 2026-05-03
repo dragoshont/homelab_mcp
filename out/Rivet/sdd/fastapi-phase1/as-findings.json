@@ -1,0 +1,109 @@
+{
+  "rules_applied": ["AS-001","AS-002","AS-003","AS-004","AS-005","AS-006","AS-007","AS-008","SEA-001","SEA-002","SEA-003","SEA-004","SEA-005","SEA-006","RC-15"],
+  "findings": [
+    {
+      "id": "F-001",
+      "rule": "AS-001",
+      "severity": "high",
+      "title": "FastMCP API name unconfirmed",
+      "description": "Design assumes mcp_obj.streamable_http_app() exists. If FastMCP exposes it under a different name (e.g. http_app, asgi_app, sse_app, _streamable), implementation breaks at import.",
+      "mitigation": "Spike during Step 5: dir(mcp) then mount under whatever name resolves. Documented as Task #1 in design §3."
+    },
+    {
+      "id": "F-002",
+      "rule": "AS-002",
+      "severity": "medium",
+      "title": "/healthz performs tool registration as side effect of import",
+      "description": "Importing homelab_mcp.server on first /healthz request registers all 133 tools. Cold start latency spike on the FIRST request rather than at uvicorn boot.",
+      "mitigation": "create_app() now imports server at construction time (before uvicorn.serve). Verify by adding a startup-only timer to the test file and confirming the FIRST /healthz is fast."
+    },
+    {
+      "id": "F-003",
+      "rule": "AS-003",
+      "severity": "high",
+      "title": "Auth bypass on Streamable HTTP sub-paths",
+      "description": "Middleware whitelists exact paths /healthz and /metrics. If FastMCP mounts at /mcp and uses sub-paths like /mcp/sse for SSE, those still hit the middleware. Good. But if the streamable app has its OWN /healthz that we're proxying, the whitelist could leak. Verify FastMCP's mounted paths.",
+      "mitigation": "Test plan covers it (T-A6 hits /mcp/ and asserts 401). Also: middleware uses == not startswith() so /mcphax can't bypass."
+    },
+    {
+      "id": "F-004",
+      "rule": "AS-004",
+      "severity": "medium",
+      "title": "Bearer-token comparison is non-constant-time",
+      "description": "`hdr != f\"Bearer {auth_token}\"` is a string compare, vulnerable to timing attacks in theory. For homelab env with single user, tolerable; for the work env (Phase 4) we MUST use hmac.compare_digest.",
+      "mitigation": "Phase 1: accept the risk (homelab is behind SSH today). Add a TODO comment in code citing this finding so Phase 3 hardens before public exposure."
+    },
+    {
+      "id": "F-005",
+      "rule": "AS-005",
+      "severity": "medium",
+      "title": "Tool count via private attribute",
+      "description": "_tool_count() reads mcp._tools (private). FastMCP could rename in a minor bump and silently break healthz semantics — _tool_count returns 0 → up=0 → K8s flaps the pod. Fail-safe: degrade healthz?",
+      "mitigation": "Function tries 3 access patterns and falls through to 0. Healthz still returns 200 (just with tools=0). Liveness probe should NOT key off tool count — it keys off HTTP 200. up gauge correctly flips to 0 → alerting catches it. Acceptable."
+    },
+    {
+      "id": "F-006",
+      "rule": "AS-006",
+      "severity": "high",
+      "title": "Image will not start if FastMCP import fails",
+      "description": "If FastMCP version drift breaks streamable_http_app(), uvicorn boot crashes. mcpo path was crash-resistant because mcpo subprocess-isolated FastMCP failures.",
+      "mitigation": "Acceptable trade — image is pinned to a sha tag, so FastMCP version is frozen per image. Bumping mcp[cli] requires a new image build & test cycle. Add a minimal smoke step to GHCR build CI: docker run + curl /healthz, fail the build if 200 not returned."
+    },
+    {
+      "id": "F-007",
+      "rule": "AS-007",
+      "severity": "high",
+      "title": "Tests could pass for the wrong reason",
+      "description": "test_unauth_mcp_is_401_when_token_set posts to /mcp/ with empty body. Could a 422 (validation) accidentally match? No — assert is == 401, not !=200. But if middleware order shifts (FastAPI runs route validation before middleware?), test could pass with wrong root cause.",
+      "mitigation": "Add a positive companion: test that WITH a token AND empty body, response is NOT 401 (i.e. middleware passed). Drop in test #6."
+    },
+    {
+      "id": "F-008",
+      "rule": "AS-008",
+      "severity": "low",
+      "title": "Spec/design inconsistency: docs_url=None vs Phase 2 swagger",
+      "description": "design.md sets docs_url=None for Phase 1. Phase 2 spec will need to flip it on. Make sure the code comment cross-refs the Phase 2 milestone so future maintainer doesn't think it was an oversight.",
+      "mitigation": "Comment already in design §2.1 ('Phase 2 will enable Swagger'). Mirror the same comment in code."
+    },
+    {
+      "id": "F-009",
+      "rule": "SEA-001",
+      "severity": "high",
+      "title": "Self-approval: tests run against in-process app, not the deployed image",
+      "description": "All A1-A11 tests use ASGITransport in-process. They don't prove the Dockerfile works. ENTRYPOINT could be wrong, image could miss uvicorn (e.g., dep added to pyproject but [standard] extra missing in pip install command), and tests still pass.",
+      "mitigation": "Add T-A9 manual verification in Step 5: docker build + docker run + curl /healthz. NOT optional. Document the curl command verbatim in build-result.json. (Same RC-15 lesson: in-process tests are not enough; need a real deployed integration check.)"
+    },
+    {
+      "id": "F-010",
+      "rule": "SEA-003",
+      "severity": "medium",
+      "title": "Gate fabrication: 'tests still pass' without specifying which",
+      "description": "MP-9 says 'all existing tests still pass' but doesn't pin a list. If something is removed and pytest collects fewer tests, it could pass trivially.",
+      "mitigation": "build-result.json will record exact pytest collected/passed counts before AND after the change. Reduction in count is a regression."
+    },
+    {
+      "id": "F-011",
+      "rule": "SEA-005",
+      "severity": "medium",
+      "title": "Two parallel image entrypoints in flight",
+      "description": "Dockerfile changes ENTRYPOINT but Dockerfile.domain (per-domain images) is unchanged. Will per-domain images still work? Are they still using mcpo?",
+      "mitigation": "Spec lists Dockerfile.domain as 'unchanged' explicitly. Phase 2 (out of scope) addresses the per-domain images. Add a paragraph to design noting that per-domain images stay on the old entrypoint to avoid scope creep."
+    },
+    {
+      "id": "F-012",
+      "rule": "RC-15",
+      "severity": "high",
+      "title": "User-capability: SSH path proves end-to-end?",
+      "description": "Spec MP-6 says stdio entrypoint unchanged. But that's verified by running 'docker run --entrypoint homelab-mcp ...' which is what the host wrapper does. Is it ALSO true that 'docker run' (default ENTRYPOINT, now homelab-mcp-http) STARTS uvicorn and serves /healthz? The user-capability sentence requires both paths simultaneously.",
+      "mitigation": "Add explicit dual smoke test in Step 7 (Build+Test): (a) docker run -p 8080:8080 → curl /healthz returns 200; (b) docker run --entrypoint homelab-mcp -i ... → JSON-RPC initialize returns serverInfo.name=homelab. BOTH must pass."
+    }
+  ],
+  "summary": {
+    "total": 12,
+    "high": 6,
+    "medium": 5,
+    "low": 1,
+    "informational": 0,
+    "unmitigated": 0
+  }
+}

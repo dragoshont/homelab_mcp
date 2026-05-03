@@ -1,0 +1,92 @@
+{
+  "tool": "uv run pytest + manual smoke",
+  "repo_relative_root": "homelab_mcp",
+  "checks": [
+    {
+      "id": "T-A1",
+      "name": "http_app.py exists",
+      "command": "Test-Path src/homelab_mcp/http_app.py",
+      "result": "pass"
+    },
+    {
+      "id": "T-A2",
+      "name": "homelab-mcp-http console script registered",
+      "command": "Select-String -Path pyproject.toml -Pattern 'homelab-mcp-http\\s*='",
+      "result": "pass"
+    },
+    {
+      "id": "T-A3",
+      "name": "Invalid port -> exit 2 with stderr mentioning env var (R0 + R4 hardening)",
+      "command": "HOMELAB_MCP_HTTP_PORT=garbage uv run homelab-mcp-http  ;  HOMELAB_MCP_HTTP_PORT=70000 uv run homelab-mcp-http",
+      "result": "pass",
+      "evidence": "Both non-integer and out-of-range ports exit 2 with diagnostic stderr line citing HOMELAB_MCP_HTTP_PORT"
+    },
+    {
+      "id": "T-A4",
+      "name": "FastAPI tests (healthz/metrics/auth/no-auth/zero-tools/manager-error/trailing-slash)",
+      "command": "uv run --extra test pytest tests/test_http_app.py -v",
+      "result": "pass",
+      "passed": 18,
+      "failed": 0,
+      "categories": [
+        "healthz happy + degraded (zero-tools 503, manager-error 503 with reason)",
+        "metrics prom format on canonical and trailing-slash paths",
+        "auth: 401 + WWW-Authenticate, RFC bearer scheme case-insensitivity, valid-token pass-through, no-auth path, healthz always open",
+        "trailing-slash variants /healthz/, /metrics/ open with token set",
+        "run_uvicorn: token strip, whitespace-only fail-closed, port range parametrised",
+        "create_app token whitespace normalization"
+      ]
+    },
+    {
+      "id": "T-A10",
+      "name": "stdio entry unchanged: serverInfo.name=homelab",
+      "command": "echo {init-payload} | uv run homelab-mcp",
+      "result": "pass",
+      "response_excerpt": "{\"serverInfo\":{\"name\":\"homelab\",\"version\":\"1.27.0\"}}"
+    },
+    {
+      "id": "T-A11",
+      "name": "New tests collected",
+      "command": "pytest --collect-only -q tests/test_http_app.py",
+      "result": "pass",
+      "tests_collected": 18
+    },
+    {
+      "id": "T-A12",
+      "name": "Existing tests still pass (regression)",
+      "command": "uv run --extra test pytest",
+      "result": "pass",
+      "total_tests": 189,
+      "passed": 189,
+      "failed": 0,
+      "duration_seconds": 21.97
+    }
+  ],
+  "deferred": [
+    {
+      "id": "T-A9",
+      "name": "Image build + dual smoke (F-009, F-012)",
+      "reason": "Local docker not installed on this dev box. CI build-monolith.yml on push will produce the image. Dual smoke (default ENTRYPOINT serves /healthz; --entrypoint homelab-mcp serves stdio) MUST be verified manually after the GHCR build, before bumping the cluster chart.",
+      "manual_steps": [
+        "1. After CI tags the image (sha-XXXXXXX), pull it on home.hont.ro: docker pull ghcr.io/dragoshont/homelab-mcp:sha-XXXXXXX",
+        "2. (HTTP) docker run --rm -d -p 8080:8080 ghcr.io/dragoshont/homelab-mcp:sha-XXXXXXX ; curl http://localhost:8080/healthz -> expect 200, body has status='ok' and tools > 0 (do NOT pin a specific count; tool registry can grow)",
+        "3. (stdio) echo '{init-payload}' | docker run --rm -i --entrypoint homelab-mcp ghcr.io/dragoshont/homelab-mcp:sha-XXXXXXX -> expect serverInfo.name='homelab'",
+        "4. ONLY THEN bump the chart tag in homelab repo."
+      ]
+    }
+  ],
+  "summary": {
+    "passed": 7,
+    "failed": 0,
+    "deferred": 1,
+    "regression_count": 0
+  },
+  "verify_rounds": 6,
+  "verify_findings_total": 12,
+  "verify_findings_unaddressed": 0,
+  "final_verify_findings": 0,
+  "notes": [
+    "Updated post-shipment to reflect 6 verify rounds + R5 hardening + PR review fixes (WWW-Authenticate header, doc/artifact reconciliation).",
+    "tools=N expectation in T-A9 step 2 is intentionally NOT pinned to 133 - registry can grow over time."
+  ]
+}

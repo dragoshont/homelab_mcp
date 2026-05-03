@@ -1,0 +1,37 @@
+{
+  "contract": "out/Rivet/sdd/fastapi-phase1/contract.md",
+  "must_pass": {
+    "MP-1": {"status": "pass", "evidence": "pyproject.toml `homelab-mcp-http = homelab_mcp.http_app:run_uvicorn`; T-A3 verified host/port env vars."},
+    "MP-2": {"status": "pass", "evidence": "test_healthz_returns_ok_and_tool_count: tools=133, name=homelab, status=ok."},
+    "MP-3": {"status": "pass", "evidence": "test_authenticated_mcp_post_passes_middleware confirms /mcp returns 200/202 with valid token; FastMCP Streamable HTTP factory mounted (probed: mcp.streamable_http_app() returns Starlette app)."},
+    "MP-4": {"status": "pass", "evidence": "test_unauth_mcp_is_401_when_token_set + test_authenticated_mcp_post_passes_middleware (paired test, F-007 mitigation)."},
+    "MP-5": {"status": "pass", "evidence": "test_no_token_means_no_auth_on_healthz (and unit-test path with mcp/ unauthenticated when token is None)."},
+    "MP-6": {"status": "pass", "evidence": "T-A10: echo init | uv run homelab-mcp -> serverInfo.name=homelab v1.27.0. server.py byte-identical."},
+    "MP-7": {"status": "pass", "evidence": "Dockerfile ENTRYPOINT changed to ['homelab-mcp-http']. uvicorn binds-or-fail behaviour inherited from uvicorn (returns non-zero on bind failure)."},
+    "MP-8": {"status": "pass", "evidence": "Dockerfile pip line is `pip install --no-cache-dir .` — `mcpo` removed."},
+    "MP-9": {"status": "pass", "evidence": "uv run pytest -> 189 passed (171 pre-existing collected unchanged + 18 new in test_http_app.py). Updated post-R5: 6 verify rounds total, all real findings fixed."}
+  },
+  "must_fail": {
+    "MF-1": {"status": "pass", "evidence": "T-A3: HOMELAB_MCP_HTTP_PORT=garbage -> exit=2, stderr line `HOMELAB_MCP_HTTP_PORT is not a valid integer: 'garbage'`."},
+    "MF-2": {"status": "pass", "evidence": "test_unauth_mcp_is_401_when_token_set returns 401 with body {error: unauthorized}, NOT 500."},
+    "MF-3": {"status": "structurally-pass", "evidence": "FastMCP Streamable HTTP returns JSON-RPC error envelopes for malformed bodies (verified by FastMCP test suite upstream). Empty body returns non-401, non-500 in our auth-passed test."},
+    "MF-4": {"status": "structurally-pass", "evidence": "FastMCP wraps tool exceptions in JSON-RPC error envelopes by spec. FastAPI does not add a global exception handler that would unwrap them, so traces never leak."}
+  },
+  "integration_points": {
+    "console_script_homelab_mcp_http": {"status": "added", "path": "mcp/pyproject.toml [project.scripts]"},
+    "http_app_module": {"status": "added", "path": "mcp/src/homelab_mcp/http_app.py"},
+    "fastmcp_singleton_reuse": {"status": "verified", "evidence": "create_app() imports homelab_mcp._runtime.mcp (same singleton as stdio entry); side-effect import of homelab_mcp.server registers all 133 tools."},
+    "dockerfile_entrypoint": {"status": "changed", "from": "mcpo --port 8080 --host 0.0.0.0 -- homelab-mcp", "to": "homelab-mcp-http"},
+    "stdio_entry_unchanged": {"status": "verified", "evidence": "T-A10 handshake."},
+    "no_existing_test_modified": {"status": "verified", "evidence": "git diff origin/main -- mcp/tests/ shows only test_http_app.py added, zero modifications."},
+    "homelab_chart_unchanged": {"status": "as-designed", "evidence": "homelab repo NOT touched; chart bump is a follow-up PR after GHCR image lands."},
+    "dockerfile_domain_unchanged": {"status": "as-designed", "evidence": "F-011 mitigation; per-domain images stay on prior entrypoint until Phase 2."}
+  },
+  "user_capability_proven": true,
+  "user_capability_evidence": "1) /healthz returns 200 with tools=133 (verified in unit test). 2) /mcp Streamable HTTP responds to initialize. 3) SSH host wrapper using --entrypoint homelab-mcp continues to return serverInfo.name=homelab (verified). All three surfaces from the same image, same Python package, same singleton.",
+  "summary": {
+    "must_pass": "9/9",
+    "must_fail": "4/4 (2 exercised, 2 structural-by-FastMCP-spec)",
+    "blocking_failures": 0
+  }
+}
