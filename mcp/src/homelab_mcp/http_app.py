@@ -126,6 +126,16 @@ def create_app(
         openapi_url=None,
     )
 
+    def _unauthorized() -> JSONResponse:
+        # RFC 6750 §3: a Bearer-protected resource MUST include a
+        # WWW-Authenticate challenge in 401 responses so generic
+        # clients can detect the auth scheme and retry correctly.
+        return JSONResponse(
+            {"error": "unauthorized"},
+            status_code=401,
+            headers={"WWW-Authenticate": 'Bearer realm="homelab-mcp"'},
+        )
+
     @app.middleware("http")
     async def auth_mw(request: Request, call_next):
         # Probes always open so K8s liveness/readiness never depend on
@@ -139,14 +149,10 @@ def create_app(
             # RFC 7235/6750: the scheme token is case-insensitive.
             # Accept "Bearer", "bearer", "BEARER", etc.
             if not hdr.lower().startswith("bearer "):
-                return JSONResponse(
-                    {"error": "unauthorized"}, status_code=401
-                )
+                return _unauthorized()
             presented = hdr[len("bearer ") :].strip()
             if presented != auth_token:
-                return JSONResponse(
-                    {"error": "unauthorized"}, status_code=401
-                )
+                return _unauthorized()
         return await call_next(request)
 
     @app.get("/healthz")

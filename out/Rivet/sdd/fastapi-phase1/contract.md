@@ -27,8 +27,8 @@ the architecture KB §11.
 1. **MP-1** New console script `homelab-mcp-http` exists in `pyproject.toml` and starts a uvicorn server bound to `0.0.0.0:8080` (port + host configurable via env `HOMELAB_MCP_HTTP_HOST`, `HOMELAB_MCP_HTTP_PORT`).
 2. **MP-2** `GET /healthz` on the running server returns 200 with JSON body containing `{"status":"ok","tools":<int>}` where `tools` is the count of registered FastMCP tools (>0).
 3. **MP-3** `POST /mcp` with a JSON-RPC `initialize` request returns a valid MCP `serverInfo` payload identifying as `homelab` (name preserved from current stdio server).
-4. **MP-4** When env `HOMELAB_MCP_HTTP_TOKEN` is set, requests to `/mcp` and `/healthz` without `Authorization: Bearer <token>` return 401. With the correct token, they succeed.
-5. **MP-5** When `HOMELAB_MCP_HTTP_TOKEN` is unset/empty, no auth is enforced (homelab default — auth is added at the network edge by Cloudflare Access in Phase 3).
+4. **MP-4** When env `HOMELAB_MCP_HTTP_TOKEN` is set, requests to `/mcp` without `Authorization: Bearer <token>` return 401 carrying a `WWW-Authenticate: Bearer realm="homelab-mcp"` header (RFC 6750 §3). With the correct token, they succeed. **`/healthz` and `/metrics` are ALWAYS open** regardless of token configuration so K8s liveness/readiness probes never depend on secret rotation.
+5. **MP-5** When `HOMELAB_MCP_HTTP_TOKEN` is unset/empty, no auth is enforced on `/mcp` (homelab default — auth is added at the network edge by Cloudflare Access in Phase 3). When the env var is set but contains only whitespace, `homelab-mcp-http` exits 2 at startup (fail-closed; misconfigured-secret guard).
 6. **MP-6** Existing `homelab-mcp` stdio entrypoint is unchanged; SSH-stdio handshake on the host still returns the same `serverInfo`.
 7. **MP-7** Container image `ENTRYPOINT` is replaced from `mcpo --port 8080 -- homelab-mcp` to `homelab-mcp-http`. The container exits with code != 0 if uvicorn fails to bind.
 8. **MP-8** `mcpo` is removed from the image (no longer in `pip install` line of the Dockerfile).

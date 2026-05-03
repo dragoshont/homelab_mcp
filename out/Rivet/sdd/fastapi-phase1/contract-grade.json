@@ -9,7 +9,7 @@
     "MP-6": {"status": "pass", "evidence": "T-A10: echo init | uv run homelab-mcp -> serverInfo.name=homelab v1.27.0. server.py byte-identical."},
     "MP-7": {"status": "pass", "evidence": "Dockerfile ENTRYPOINT changed to ['homelab-mcp-http']. uvicorn binds-or-fail behaviour inherited from uvicorn (returns non-zero on bind failure)."},
     "MP-8": {"status": "pass", "evidence": "Dockerfile pip line is `pip install --no-cache-dir .` — `mcpo` removed."},
-    "MP-9": {"status": "pass", "evidence": "uv run pytest -> 177 passed (171 pre-existing collected unchanged + 6 new in test_http_app.py)."}
+    "MP-9": {"status": "pass", "evidence": "uv run pytest -> 189 passed (171 pre-existing collected unchanged + 18 new in test_http_app.py). Updated post-R5: 6 verify rounds total, all real findings fixed."}
   },
   "must_fail": {
     "MF-1": {"status": "pass", "evidence": "T-A3: HOMELAB_MCP_HTTP_PORT=garbage -> exit=2, stderr line `HOMELAB_MCP_HTTP_PORT is not a valid integer: 'garbage'`."},

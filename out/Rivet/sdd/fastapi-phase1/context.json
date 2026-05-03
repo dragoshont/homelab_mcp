@@ -3,7 +3,7 @@
   "timestamp": "2026-05-03T12:31:06.4446657\u002B00:00",
   "intent": "code",
   "repository": {
-    "repoRoot": "C:\\src\\homelab_mcp-sdd-fastapi",
+    "repoRoot": ".",
     "branch": "sdd/fastapi-phase1",
     "cliVersion": "2.9.23",
     "solutions": [],

@@ -48,6 +48,13 @@ async def test_unauth_mcp_is_401_when_token_set():
         r = await c.post("/mcp/", json={})
     assert r.status_code == 401
     assert r.json() == {"error": "unauthorized"}
+    # RFC 6750 §3: 401 on Bearer-protected resource MUST advertise the
+    # challenge via WWW-Authenticate. Some HTTP clients (e.g. curl
+    # --anyauth, browsers, proxies) rely on this to negotiate auth.
+    www_auth = r.headers.get("www-authenticate", "")
+    assert www_auth.lower().startswith("bearer"), (
+        f"missing/invalid WWW-Authenticate header: {www_auth!r}"
+    )
 
 
 @pytest.mark.asyncio
