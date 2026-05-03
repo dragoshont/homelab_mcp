@@ -210,6 +210,100 @@ curl -s -X POST http://mcp.example.com/host_status \
   -H 'content-type: application/json' -d '{}'
 ```
 
+### Tool catalog
+
+All 133 tools ship in **this** image — there are no separate per-domain
+images or sidecars (the bundled monolith is intentional; see "Repository
+layout" below). Group breakdown:
+
+| Server group | Read tools | Mutating tools | Examples |
+| --- | ---:| ---:| --- |
+| `platform` (kube, host, flux, audit, observability) | 51 | 0 | `kube_pods`, `kube_log_errors`, `flux_status`, `host_smart`, `netdata_query`, `audit_tail` |
+| `media` (Sonarr, Radarr, Lidarr, Readarr, Mylar3, Prowlarr, qBittorrent, Plex, Bazarr, Cloudflare DNS) | 30 | 0 | `sonarr_queue`, `qbt_torrents`, `plex_now_playing`, `cf_dns_list` |
+| `control` (mutating ops across all domains) | 0 | 29 | `qbt_pause`, `radarr_delete`, `kube_restart`, `flux_reconcile`, `unifi_block`, `apple_play_pause`, `dirigera_set_light` |
+| `homeauto` (DIRIGERA, Apple TV, Homebridge, Scrypted) | 16 | 0 | `dirigera_devices`, `dirigera_lights`, `dirigera_sensors`, `apple_devices`, `apple_now_playing`, `homebridge_accessories` |
+| `network` (UniFi) | 7 | 0 | `unifi_clients`, `unifi_devices`, `unifi_health` |
+
+Full machine-readable inventory:
+[`docs/migration/tool-inventory.json`](docs/migration/tool-inventory.json).
+
+### Enabling / disabling individual tools
+
+There are two layers of control:
+
+**1. Server-side: which tools the server is willing to execute.**
+
+| Switch | Effect |
+| --- | --- |
+| `HOMELAB_MCP_READONLY=true` (default) | Refuses every mutating tool (returns a structured `read_only` error). The 104 read tools still work. |
+| `HOMELAB_MCP_READONLY=false` | All 133 tools are callable. Required for write paths like `qbt_pause`, `radarr_delete`, `dirigera_set_light`, etc. |
+| Per-service env vars unset (e.g. `SONARR_URL` not set) | Tools for that service return a structured `service_not_configured` error. No crash. This is how you "disable" a whole upstream — just leave its env vars unset. |
+| `CF_ALLOWED_ZONES` (CSV) | Cloudflare DNS write tools refuse any zone not in the allowlist. |
+
+**2. Client-side: which tools the LLM is allowed to see.**
+
+Most chat models cap function-calling at ~128 tools. OpenWebUI's
+`TOOL_SERVER_CONNECTIONS` accepts a `function_name_filter_list` field
+that prefixes blocked tools with `!`:
+
+```json
+[
+  {
+    "url": "http://homelab-mcp:8080",
+    "path": "openapi.json",
+    "auth_type": "none",
+    "config": {
+      "enable": true,
+      "function_name_filter_list":
+        "!dirigera_set_state,!unifi_block,!kube_restart,!host_reboot_required"
+    },
+    "info": { "name": "homelab" }
+  }
+]
+```
+
+Conventions:
+
+- `!name` blocks; absence of a `!` line means allow.
+- An empty `function_name_filter_list` allows everything.
+- Mix-and-match: enable read-only DIRIGERA but hide the writes:
+  ```
+  !dirigera_set_light,!dirigera_set_outlet,!dirigera_set_scene,!dirigera_set_device,!dirigera_set_state
+  ```
+
+For native MCP clients (VS Code, Claude Desktop, Copilot CLI) there is
+no per-tool block list at the server — the model sees everything the
+server advertises. To narrow that surface, run a second instance of the
+image with the corresponding upstream env vars omitted.
+
+### Example: enabling DIRIGERA (IKEA smart-home hub)
+
+DIRIGERA is configured via two env vars:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e DIRIGERA_HUB_IP=192.168.1.42 \
+  -e DIRIGERA_TOKEN=<paired-token> \
+  ghcr.io/dragoshont/homelab-mcp:main
+```
+
+To get the token, run the helper from the [`dirigera`](https://github.com/Leggin/dirigera)
+package once and press the action button on the hub when prompted:
+
+```bash
+pip install dirigera
+generate-token 192.168.1.42
+```
+
+After that, the eleven `dirigera_*` tools (six read, five write) become
+live. With `HOMELAB_MCP_READONLY=true` only the read tools execute; the
+writes return `read_only`. Typical OpenWebUI block list to keep just the
+read surface:
+
+```
+!dirigera_set_light,!dirigera_set_outlet,!dirigera_set_scene,!dirigera_set_device,!dirigera_set_state
+```
+
 ### Configuration contract
 
 All config is via env vars. **No homelab specifics are hardcoded** — the
