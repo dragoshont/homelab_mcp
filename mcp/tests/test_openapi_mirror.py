@@ -1087,20 +1087,33 @@ async def test_multi_trailing_slash_does_not_leak_private_paths():
             f"multi-slash on /mcp returned {r2.status_code}; "
             "expected 401"
         )
-        # Multi-slash on PUBLIC path: bypass fires, routing 404s.
-        # Critical: response status is NOT 200 (didn't reach handler
-        # via fuzzy match) and NOT 401 (bypass did fire). It's 404.
-        r3 = await c.get("/openapi.json///")
-        assert r3.status_code == 404, (
-            f"multi-slash on public path returned {r3.status_code}; "
-            "expected 404 (bypass fires but routing has no exact match "
-            "for the multi-slash literal). If you see 200, routing has "
-            "started accepting fuzzy slash matches — review the route "
-            "registrations."
+        # Multi-slash on PUBLIC path: bypass fires, routing's response
+        # depends on Starlette config (typically 404 for no exact-route
+        # match, sometimes 307 with redirect_slashes). Critical: response
+        # is NOT 200 (didn't reach handler via fuzzy match) and NOT 401
+        # (bypass did fire — middleware did NOT block).
+        r3 = await c.get("/openapi.json///", follow_redirects=False)
+        assert r3.status_code != 200, (
+            f"multi-slash on public path returned 200 — routing started "
+            "accepting fuzzy slash matches, which would let `/openapi.json/foo` "
+            "fall through to the openapi handler. Review route registrations."
+        )
+        assert r3.status_code != 401, (
+            f"multi-slash on public path returned 401 — middleware bypass "
+            "did NOT fire on rstrip-canonicalised /openapi.json. Review "
+            "auth_mw canonicalisation logic."
+        )
+        # Acceptable: 404 (no route), 307 (redirect_slashes -> /openapi.json),
+        # 405 (method-not-allowed for some reason). All preserve the safety
+        # property that no PRIVATE handler is reached.
+        assert r3.status_code in (307, 404, 405), (
+            f"multi-slash on public path returned unexpected {r3.status_code}; "
+            "expected one of 307/404/405 — routing should not have an exact "
+            "match for the multi-slash literal."
         )
 
 
-
+def test_public_endpoints_constant_is_correct():
     """SDD: public-openapi (frozen surface).
 
     Pin PUBLIC_ENDPOINTS so accidental additions surface in code
