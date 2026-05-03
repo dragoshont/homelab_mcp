@@ -389,3 +389,70 @@ async def test_tool_route_wins_over_streamable_mount():
         r = await c.post("/hello", json={"name": "you"})
     assert r.status_code == 200
     assert r.json() == {"msg": "hi you"}
+
+
+# ---------------------------------------------------------------------------
+# Verify R1 fixes (gpt-5.3-codex adversarial findings)
+# ---------------------------------------------------------------------------
+
+
+def test_custom_streamable_path_collision_rejected():
+    """ADV-001: if mcp.settings.streamable_http_path is moved (e.g. /rpc),
+    a tool named 'rpc' must NOT be registered as an HTTP route — otherwise
+    it would shadow the streamable mount."""
+    m = FastMCP("t")
+    m.settings.streamable_http_path = "/rpc"
+
+    @m.tool(name="rpc")
+    def rpc():
+        return {"ok": True}
+
+    @m.tool()
+    def fine():
+        return {"ok": True}
+
+    app = create_app(mcp_obj=m)
+    paths = sorted(app.state.openapi_doc["paths"].keys())
+    assert "/rpc" not in paths
+    assert "/fine" in paths
+
+
+@pytest.mark.asyncio
+async def test_tool_internal_type_error_returns_500():
+    """ADV-008: a TypeError raised inside the tool body (e.g. 1 + 'a')
+    is a server bug, NOT an argument-validation error — must be 500."""
+    m = FastMCP("t")
+
+    @m.tool()
+    def broken(x: int):
+        # Forces a runtime TypeError unrelated to argument validation.
+        return 1 + "a"  # type: ignore[operator]
+
+    app = create_app(mcp_obj=m)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.post("/broken", json={"x": 1})
+    assert r.status_code == 500, r.text
+
+
+def test_recursive_defs_no_dangling_refs():
+    """ADV-002: when $defs has a self-reference, _inline_defs must NOT
+    leave dangling `#/$defs/X` refs in the output without keeping $defs."""
+    schema = {
+        "type": "object",
+        "properties": {"root": {"$ref": "#/$defs/Node"}},
+        "$defs": {
+            "Node": {
+                "type": "object",
+                "properties": {"next": {"$ref": "#/$defs/Node"}},
+            }
+        },
+    }
+    out = _inline_defs(schema)
+    serialised = json.dumps(out)
+    if "#/$defs/" in serialised:
+        # Dangling ref preserved — $defs must still be present so it
+        # can resolve.
+        assert "$defs" in out
+        assert "Node" in out["$defs"]

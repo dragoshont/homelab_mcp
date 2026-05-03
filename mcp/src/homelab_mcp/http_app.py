@@ -40,9 +40,32 @@ logger = logging.getLogger(__name__)
 # names with characters that would either (a) confuse routing (slash,
 # wildcard chars) or (b) collide with a reserved internal path.
 _TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]*$")
-_RESERVED_PATHS = frozenset(
-    {"/healthz", "/metrics", "/mcp", "/openapi.json"}
+# Always-reserved paths (open even when streamable path is moved).
+_BASE_RESERVED_PATHS = frozenset(
+    {"/healthz", "/metrics", "/openapi.json"}
 )
+
+
+def _reserved_paths_for(mcp_obj) -> frozenset[str]:
+    """Reserved URL paths for tool registration on this MCP instance.
+
+    Includes the always-open ops paths plus the configured streamable
+    HTTP path (default ``/mcp``). Operators who set
+    ``mcp.settings.streamable_http_path = '/rpc'`` get the right guard
+    automatically (verify ADV-001 / fastapi-phase2 R1).
+    """
+    extra: set[str] = set()
+    settings = getattr(mcp_obj, "settings", None)
+    if settings is not None:
+        sp = getattr(settings, "streamable_http_path", None)
+        if isinstance(sp, str) and sp.startswith("/"):
+            extra.add(sp.rstrip("/") or "/")
+    extra.add("/mcp")  # Always reserve the default too.
+    return _BASE_RESERVED_PATHS | frozenset(extra)
+
+
+# Back-compat alias — some tests/callers may import the old name.
+_RESERVED_PATHS = _BASE_RESERVED_PATHS | frozenset({"/mcp"})
 
 
 def _tool_count(mcp_obj) -> int:
@@ -245,8 +268,16 @@ def _inline_defs(schema: dict) -> dict:
 
     out = walk(copy.deepcopy(schema))
     if isinstance(out, dict):
-        out.pop("$defs", None)
-        out.pop("definitions", None)
+        # If a recursive ref survived (cycle), KEEP $defs so the
+        # remaining $ref still resolves — dangling refs would break
+        # OpenWebUI's importer (verify ADV-002 / fastapi-phase2 R1).
+        leftover = json.dumps(out)
+        has_cycle_ref = (
+            "#/$defs/" in leftover or "#/definitions/" in leftover
+        )
+        if not has_cycle_ref:
+            out.pop("$defs", None)
+            out.pop("definitions", None)
     return out
 
 
@@ -320,20 +351,16 @@ def _make_tool_handler(tool):
             return JSONResponse(
                 {"error": f"ValidationError: {exc}"}, status_code=400
             )
-        except TypeError as exc:
-            return JSONResponse(
-                {"error": f"TypeError: {exc}"}, status_code=400
-            )
         except Exception as exc:
             # FastMCP wraps argument-validation failures in
-            # ToolError. Detect via the cause chain so we still
-            # return 400 for bad-input cases (verify F-001).
+            # ToolError. ONLY ValidationError-from-cause is a 400;
+            # any other exception (including TypeError raised inside
+            # the tool body, e.g. ``1 + 'a'``) is a server bug and
+            # MUST be a 500 (verify ADV-008 / fastapi-phase2 R1).
             cause = getattr(exc, "__cause__", None)
-            if isinstance(cause, ValidationError) or isinstance(
-                cause, TypeError
-            ):
+            if isinstance(cause, ValidationError):
                 return JSONResponse(
-                    {"error": f"{type(cause).__name__}: {cause}"},
+                    {"error": f"ValidationError: {cause}"},
                     status_code=400,
                 )
             # Last-resort envelope. Traceback intentionally NOT in body.
@@ -368,13 +395,14 @@ def _build_openapi_doc(
     *,
     server_title: str = "homelab-mcp",
     server_version: str = "phase2",
+    reserved_paths: frozenset = _RESERVED_PATHS,
 ) -> dict:
     """Build a tools-only OpenAPI 3.1 document (mcpo-compatible)."""
     paths: dict = {}
     for tool in tools:
         if not _TOOL_NAME_RE.match(tool.name):
             continue
-        if f"/{tool.name}" in _RESERVED_PATHS:
+        if f"/{tool.name}" in reserved_paths:
             continue
         params = _inline_defs(
             tool.parameters or {"type": "object", "properties": {}}
@@ -426,6 +454,7 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
     """
     tm = getattr(mcp_obj, "_tool_manager", None)
     registered: list = []
+    reserved = _reserved_paths_for(mcp_obj)
     if tm is None or not callable(getattr(tm, "list_tools", None)):
         logger.warning(
             "tool manager unavailable; OpenAPI mirror skipped"
@@ -443,7 +472,7 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
             if not isinstance(name, str) or not _TOOL_NAME_RE.match(name):
                 logger.warning("skip tool %r: invalid HTTP name", name)
                 continue
-            if f"/{name}" in _RESERVED_PATHS:
+            if f"/{name}" in reserved:
                 logger.warning(
                     "skip tool %r: collides with reserved path", name
                 )
@@ -458,7 +487,9 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
             registered.append(tool)
 
     # Cache the doc on app.state so tests can override it.
-    app.state.openapi_doc = _build_openapi_doc(registered)
+    app.state.openapi_doc = _build_openapi_doc(
+        registered, reserved_paths=reserved
+    )
 
     @app.get("/openapi.json", include_in_schema=False)
     async def openapi_json():
