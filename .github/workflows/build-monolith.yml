@@ -54,6 +54,9 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           push: "true"
           cache-scope: monolith-main
+          # Rolling :main builds skip Trivy scan (consistent with no-cosign-sign
+          # policy on rolling builds). Release lane runs the full scan + sign.
+          scan: "false"
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
