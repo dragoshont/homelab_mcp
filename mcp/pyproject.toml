@@ -2,14 +2,14 @@
 name = "homelab-mcp"
 version = "0.1.0"
 description = "All-in-one MCP server for homelab services"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "mcp[cli]>=1.0.0",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
     "dirigera>=1.2.7",
     "pyatv>=0.16.0",
-    "aiounifi>=83",
+    "aiounifi>=83,<=85",
 ]
 
 [project.optional-dependencies]
