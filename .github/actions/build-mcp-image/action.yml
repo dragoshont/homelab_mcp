@@ -155,7 +155,7 @@ runs:
 
     - name: Install Trivy
       if: ${{ inputs.scan == 'true' }}
-      uses: aquasecurity/setup-trivy@v0.2.0
+      uses: aquasecurity/setup-trivy@v0.2.6
       with:
         cache: true
         version: v0.55.2
