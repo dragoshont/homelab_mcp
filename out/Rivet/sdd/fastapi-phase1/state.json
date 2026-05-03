@@ -111,6 +111,8 @@
     "ID"
   ],
   "specValidated": true,
-  "verifyRoundsConsumed": {},
-  "checksum": "11a865a8c71ac8a0358bf83550dabdae79379541b42e0eacaba6c8d59ba35b88"
+  "verifyRoundsConsumed": {
+    "9": 1
+  },
+  "checksum": "cdd4bdce6cfb6bc740a479475d13c69a9f93f36e6afa5839f03d35a02f1e69ce"
 }

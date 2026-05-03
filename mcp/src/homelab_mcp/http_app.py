@@ -160,6 +160,15 @@ def create_app(
             body, media_type="text/plain; version=0.0.4; charset=utf-8"
         )
 
+    # Trailing-slash variants for probes. We mount the FastMCP
+    # Streamable HTTP app at "/" below; that mount otherwise swallows
+    # "/healthz/" and "/metrics/" and 404s before the explicit routes
+    # above can resolve. Some Ingress controllers / curl-with-redirect
+    # / probe configurations append a trailing slash, so handle them
+    # explicitly. (verify ADV-007, R3)
+    app.add_api_route("/healthz/", healthz, methods=["GET"])
+    app.add_api_route("/metrics/", metrics, methods=["GET"])
+
     # Mount FastMCP's native Streamable HTTP transport.
     #
     # FastMCP's streamable_http_app() returns a Starlette app whose

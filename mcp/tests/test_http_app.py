@@ -100,19 +100,22 @@ async def test_healthz_open_even_when_token_set():
 
 @pytest.mark.asyncio
 async def test_healthz_trailing_slash_open_when_token_set():
-    """Verify ADV-004/ADV-006: trailing-slash probe paths must NOT 401.
+    """Verify ADV-004/ADV-006/ADV-007: trailing-slash probe paths must
+    serve the same payload as the canonical path.
 
     Some Ingress controllers / Cloudflared / curl-with-redirect-follow
     append a trailing slash. Those requests still reach the auth
-    middleware before FastAPI's redirect_slashes can issue a 307.
+    middleware before FastAPI's redirect_slashes can issue a 307, AND
+    the catch-all /-mount otherwise swallows them and 404s.
     """
     app = create_app(auth_token="s3cret")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://t"
     ) as c:
         r = await c.get("/healthz/", follow_redirects=False)
-    assert r.status_code != 401, (
-        f"trailing-slash /healthz/ blocked by auth: {r.status_code}"
+    assert r.status_code in (200, 503), (
+        f"trailing-slash /healthz/ returned {r.status_code}; expected the "
+        "same status as /healthz (200 happy path, 503 zero tools)"
     )
 
 
@@ -123,7 +126,10 @@ async def test_metrics_trailing_slash_open_when_token_set():
         transport=ASGITransport(app=app), base_url="http://t"
     ) as c:
         r = await c.get("/metrics/", follow_redirects=False)
-    assert r.status_code != 401
+    assert r.status_code == 200, (
+        f"trailing-slash /metrics/ returned {r.status_code}; expected 200"
+    )
+    assert "homelab_mcp_up" in r.text
 
 
 @pytest.mark.asyncio
