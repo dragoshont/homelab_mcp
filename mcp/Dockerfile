@@ -4,7 +4,7 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY src/ src/
 
-RUN pip install --no-cache-dir . mcpo
+RUN pip install --no-cache-dir .
 
 # SSH client for host tools
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*
@@ -22,6 +22,10 @@ EXPOSE 8080
 ENV HOME=/tmp
 USER 1000:1000
 
-# mcpo wraps the stdio MCP server (homelab-mcp) as an OpenAPI HTTP bridge.
-# Without mcpo, homelab-mcp reads stdin and exits immediately in a pod.
-ENTRYPOINT ["mcpo", "--port", "8080", "--host", "0.0.0.0", "--", "homelab-mcp"]
+# SDD: fastapi-phase1 — replaced the mcpo shim with a native FastAPI app
+# that mounts FastMCP's Streamable HTTP transport and adds /healthz +
+# /metrics. Same singleton tool registry as the stdio entry; consumers
+# pick by --entrypoint at run time:
+#   - default (HTTP)  -> homelab-mcp-http  (this entrypoint)
+#   - host SSH stdio  -> docker run --entrypoint homelab-mcp ...
+ENTRYPOINT ["homelab-mcp-http"]

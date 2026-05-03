@@ -1,0 +1,76 @@
+{
+  "tool": "uv run pytest + manual smoke",
+  "repo": "C:/src/homelab_mcp-sdd-fastapi/mcp",
+  "checks": [
+    {
+      "id": "T-A1",
+      "name": "http_app.py exists",
+      "command": "Test-Path src/homelab_mcp/http_app.py",
+      "result": "pass"
+    },
+    {
+      "id": "T-A2",
+      "name": "homelab-mcp-http console script registered",
+      "command": "Select-String -Path pyproject.toml -Pattern 'homelab-mcp-http\\s*='",
+      "result": "pass"
+    },
+    {
+      "id": "T-A3",
+      "name": "Invalid port -> exit 2 with stderr mentioning env var",
+      "command": "HOMELAB_MCP_HTTP_PORT=garbage uv run homelab-mcp-http",
+      "result": "pass",
+      "evidence": "stderr=\"HOMELAB_MCP_HTTP_PORT is not a valid integer: 'garbage'\" exit=2"
+    },
+    {
+      "id": "T-A4_A8_A6_A7",
+      "name": "FastAPI tests (healthz/metrics/auth/no-auth)",
+      "command": "uv run --extra test pytest tests/test_http_app.py -v",
+      "result": "pass",
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "id": "T-A10",
+      "name": "stdio entry unchanged: serverInfo.name=homelab",
+      "command": "echo {init-payload} | uv run homelab-mcp",
+      "result": "pass",
+      "response_excerpt": "{\"serverInfo\":{\"name\":\"homelab\",\"version\":\"1.27.0\"}}"
+    },
+    {
+      "id": "T-A11",
+      "name": "New tests collected",
+      "command": "pytest --collect-only tests/test_http_app.py | wc -l",
+      "result": "pass",
+      "tests_collected": 6
+    },
+    {
+      "id": "T-A12",
+      "name": "Existing tests still pass (regression)",
+      "command": "uv run --extra test pytest",
+      "result": "pass",
+      "total_tests": 177,
+      "passed": 177,
+      "failed": 0,
+      "duration_seconds": 42.04
+    }
+  ],
+  "deferred": [
+    {
+      "id": "T-A9",
+      "name": "Image build + dual smoke (F-009, F-012)",
+      "reason": "Local docker not installed on this dev box. CI build-monolith.yml on push will produce the image. Dual smoke (default ENTRYPOINT serves /healthz; --entrypoint homelab-mcp serves stdio) MUST be verified manually after the GHCR build, before bumping the cluster chart.",
+      "manual_steps": [
+        "1. After CI tags the image (sha-XXXXXXX), pull it on home.hont.ro: docker pull ghcr.io/dragoshont/homelab-mcp:sha-XXXXXXX",
+        "2. (HTTP) docker run --rm -d -p 8080:8080 ghcr.io/dragoshont/homelab-mcp:sha-XXXXXXX ; curl http://localhost:8080/healthz -> expect 200 with status=ok and tools=133",
+        "3. (stdio) echo '{init-payload}' | docker run --rm -i --entrypoint homelab-mcp ghcr.io/dragoshont/homelab-mcp:sha-XXXXXXX -> expect serverInfo.name=homelab",
+        "4. ONLY THEN bump the chart tag in homelab repo."
+      ]
+    }
+  ],
+  "summary": {
+    "passed": 7,
+    "failed": 0,
+    "deferred": 1,
+    "regression_count": 0
+  }
+}
