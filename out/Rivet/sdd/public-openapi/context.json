@@ -1,0 +1,256 @@
+{
+  "contractVersion": "2.0",
+  "timestamp": "2026-05-03T20:21:25.2634676\u002B00:00",
+  "intent": "code",
+  "repository": {
+    "repoRoot": "C:\\src\\_research\\homelab_mcp",
+    "branch": "sdd/public-openapi",
+    "cliVersion": "2.9.23",
+    "solutions": [],
+    "latestReport": {
+      "status": "not-found",
+      "freshnessStatus": "not-found"
+    },
+    "gitHub": {
+      "owner": "dragoshont",
+      "repoName": "homelab_mcp"
+    }
+  },
+  "workflow": {
+    "requestedIntent": "code",
+    "availableActions": [
+      {
+        "name": "review",
+        "command": "rivet pr-review",
+        "available": true,
+        "reason": "PR review mode is available in any git repository with a branch diff."
+      },
+      {
+        "name": "scan",
+        "command": "rivet scan",
+        "available": false,
+        "reason": "No solutions discovered."
+      },
+      {
+        "name": "upgrade",
+        "command": "rivet upgrade \u003Cpackage\u003E to \u003Cversion\u003E",
+        "available": false,
+        "reason": "Provide a package and version to route into upgrade mode."
+      },
+      {
+        "name": "migrate",
+        "command": "rivet migrate to net10",
+        "available": false,
+        "reason": "Migration analysis requires a solution."
+      },
+      {
+        "name": "plan",
+        "command": "rivet plan",
+        "available": false,
+        "reason": "Run scan/analyze first to produce a report."
+      },
+      {
+        "name": "fix",
+        "command": "rivet fix",
+        "available": false,
+        "reason": "Fix mode requires a prior scan/analyze report."
+      },
+      {
+        "name": "verify",
+        "command": "rivet verify",
+        "available": true,
+        "reason": "Verify can run in any git repository."
+      },
+      {
+        "name": "code",
+        "command": "rivet add \u003Cfeature\u003E",
+        "available": true,
+        "reason": "Requested via --intent code."
+      },
+      {
+        "name": "auto",
+        "command": "rivet",
+        "available": false,
+        "reason": "Autopilot requires a solution to analyze."
+      },
+      {
+        "name": "stats",
+        "command": "rivet stats",
+        "available": true,
+        "reason": "Session stats are always available when memory/logging is enabled."
+      },
+      {
+        "name": "drift",
+        "command": "rivet drift",
+        "available": true,
+        "reason": "Drift checks are available because the repo includes Rivet skills and agents."
+      }
+    ],
+    "recommendedExecutionMode": {
+      "name": "code",
+      "reason": "Requested via --intent code.",
+      "confidence": "high"
+    }
+  },
+  "deterministic": {
+    "reportBackedKnowledge": {
+      "status": "missing-report",
+      "sourcesAvailable": 3,
+      "sourcesWithResults": 0,
+      "sources": [
+        {
+          "name": "repo-docs",
+          "status": "missing-report",
+          "count": 0
+        },
+        {
+          "name": "commit-history",
+          "status": "missing-report",
+          "count": 0
+        },
+        {
+          "name": "cross-repo",
+          "status": "missing-report",
+          "count": 0
+        }
+      ],
+      "crossRepoIntel": {
+        "status": "missing-report",
+        "count": 0,
+        "topSummaries": []
+      },
+      "behavioralChangeIntel": {
+        "status": "missing-report",
+        "count": 0,
+        "topSummaries": []
+      }
+    },
+    "wavePlan": {
+      "status": "missing-report",
+      "totalWaves": 0,
+      "actionableWaves": 0,
+      "totalItems": 0
+    }
+  },
+  "enrichment": {
+    "isOptional": true,
+    "status": "complete",
+    "successfulQueryCount": 8,
+    "failedQueryCount": 0,
+    "timedOutQueryCount": 0,
+    "queries": [
+      {
+        "source": "github-pr",
+        "status": "success",
+        "durationSeconds": 0.64,
+        "data": {
+          "count": 0,
+          "prs": [],
+          "searchedBranch": "sdd/public-openapi",
+          "status": "no-pr"
+        }
+      },
+      {
+        "source": "git-branch",
+        "status": "success",
+        "durationSeconds": 0.15,
+        "data": {
+          "branch": "sdd/public-openapi",
+          "defaultBranch": "main",
+          "aheadCount": 0,
+          "behindCount": 0,
+          "isBehindDefaultBranch": false,
+          "status": "collected"
+        }
+      },
+      {
+        "source": "git-history",
+        "status": "success",
+        "durationSeconds": 0,
+        "data": {
+          "status": "skipped",
+          "reason": "no search keywords"
+        }
+      },
+      {
+        "source": "git-main-history",
+        "status": "success",
+        "durationSeconds": 0.08,
+        "data": {
+          "status": "success",
+          "branch": "origin/main",
+          "count": 10,
+          "commits": [
+            "6fd2bbf docs(readme): tool catalog by domain \u002B enable/disable guidance \u002B DIRIGERA recipe (#18)",
+            "a4f58b0 docs(readme): add client-usage examples (VS Code, Copilot CLI, Claude Desktop, OpenWebUI, curl) (#17)",
+            "e123b41 feat(http): OpenAPI tool-server mirror (SDD: fastapi-phase2) (#16)",
+            "02d9332 feat(http): native FastAPI app replaces mcpo (SDD: fastapi-phase1) (#15)",
+            "fc5339c ci(build-monolith): skip Trivy scan on rolling main builds (release lane keeps it)",
+            "e58e48b ci(trivy): remove leftover duplicate version line",
+            "a7d1c02 ci(trivy): pin Trivy to v0.68.2 (default \u0027latest\u0027 resolved to broken v0.55.2)",
+            "2b2eb17 ci: bump aquasecurity/setup-trivy to v0.2.6 (v0.2.0 no longer exists)",
+            "bdef505 fix(mcp): bump requires-python to 3.12 and pin aiounifi\u003C=85",
+            "e9ae50e Phase 2.4: PyPI publish workflow (trusted publisher, OIDC) (#14)"
+          ]
+        }
+      },
+      {
+        "source": "git-branch-commits",
+        "status": "success",
+        "durationSeconds": 0.07,
+        "data": {
+          "status": "success",
+          "baseBranch": "origin/main",
+          "count": 0,
+          "commits": []
+        }
+      },
+      {
+        "source": "local-docs",
+        "status": "success",
+        "durationSeconds": 0.02,
+        "data": {
+          "status": "success",
+          "hasDocFxToc": false,
+          "hasWiki": false,
+          "readmeCount": 1
+        }
+      },
+      {
+        "source": "enghub-wiki",
+        "status": "success",
+        "durationSeconds": 0,
+        "data": {
+          "status": "skipped",
+          "reason": "no keywords"
+        }
+      },
+      {
+        "source": "pr-issue-reader",
+        "status": "success",
+        "durationSeconds": 0,
+        "data": {
+          "status": "deferred-to-agent",
+          "note": "URL following requires agent context"
+        }
+      }
+    ],
+    "criticalMissingSources": [],
+    "missingOptionalSources": []
+  },
+  "completeness": {
+    "isComplete": false,
+    "status": "incomplete",
+    "criticalMissingSources": [],
+    "missingDeterministicSources": [
+      "solutions",
+      "latest-report"
+    ],
+    "missingOptionalSources": [],
+    "warnings": [
+      "No solutions were discovered. Scan, upgrade, and migrate modes may be unavailable until a solution is added.",
+      "No prior report was found. Report-backed knowledge and plan/fix recommendations require a fresh scan."
+    ]
+  },
+  "durationSeconds": 1.01
+}

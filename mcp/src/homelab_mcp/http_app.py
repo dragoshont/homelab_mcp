@@ -45,6 +45,35 @@ _BASE_RESERVED_PATHS = frozenset(
     {"/healthz", "/metrics", "/openapi.json"}
 )
 
+# SDD: public-openapi (out/Rivet/sdd/public-openapi).
+#
+# Public endpoints — bypass the bearer middleware. Listed as
+# (canonical_path, METHOD) tuples so a future addition cannot
+# accidentally make POST/PUT/DELETE on `/openapi.json` public (MF-8).
+#
+# Why each path is here:
+#   - /healthz, /metrics: K8s probes / scrape jobs that MUST work
+#     without secret rotation (Phase 1 contract).
+#   - /openapi.json: tool-server discovery endpoint. OpenWebUI's
+#     TOOL_SERVER_CONNECTIONS importer issues an unauthenticated GET
+#     (auth_type: none in helmrelease.yaml). The doc only describes
+#     the API surface (tool names + JSON schemas) — no data, no
+#     mutations, no credentials. Tool **execution** (POST /<tool>)
+#     and the MCP transport (/mcp/*) remain bearer-gated. This is
+#     the same boundary mcpo (the previous tool-server) drew.
+#
+# HEAD entries are explicit: Starlette auto-dispatches HEAD onto GET
+# routes, but the auth middleware sees method == "HEAD" before that
+# dispatch, so it must be in this set or HEAD probes get 401.
+PUBLIC_ENDPOINTS: frozenset[tuple[str, str]] = frozenset({
+    ("/healthz", "GET"),
+    ("/healthz", "HEAD"),
+    ("/metrics", "GET"),
+    ("/metrics", "HEAD"),
+    ("/openapi.json", "GET"),
+    ("/openapi.json", "HEAD"),
+})
+
 
 def _reserved_paths_for(mcp_obj) -> frozenset[str]:
     """Reserved URL paths for tool registration on this MCP instance.
@@ -155,10 +184,25 @@ def create_app(
 
     @app.middleware("http")
     async def auth_mw(request: Request, call_next):
-        # Probes always open so K8s liveness/readiness never depend on
-        # secret rotation. rstrip("/") to also accept trailing-slash
-        # variants used by some Ingress controllers.
-        if request.url.path.rstrip("/") in ("/healthz", "/metrics"):
+        # SDD: public-openapi.
+        # Canonicalise the path BEFORE comparing against the public
+        # set. Two reasons:
+        # 1. Trailing slashes — some Ingress controllers append `/`,
+        #    we want /healthz/ to match /healthz.
+        # 2. MF-7 (path-confusion attack) — `request.url.path` is
+        #    Starlette's parsed component (URL-decoded once, split
+        #    from query). It does NOT collapse `..` segments, so a
+        #    request like `GET /openapi.json/../mcp` arrives with
+        #    `path == "/openapi.json/../mcp"` (literal). Exact match
+        #    against PUBLIC_ENDPOINTS rejects it -> falls through to
+        #    auth -> 401. Verified by
+        #    test_path_traversal_request_path_is_literal.
+        # 3. MF-8 (method confusion) — listing (path, METHOD) tuples
+        #    means POST /openapi.json is NOT public (FastAPI returns
+        #    405 because no POST handler is registered).
+        canon = request.url.path.rstrip("/") or "/"
+        method = request.method.upper()
+        if (canon, method) in PUBLIC_ENDPOINTS:
             return await call_next(request)
         if auth_token:
             hdr = request.headers.get("authorization", "")
@@ -561,8 +605,11 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
     # BUG-004).
     app.state.openapi_mirror_degraded = list_failed
 
-    @app.get("/openapi.json", include_in_schema=False)
-    async def openapi_json():
+    async def openapi_json(request: Request):
+        # SDD: public-openapi — reachable without auth (see PUBLIC_ENDPOINTS
+        # and auth_mw). HEAD support is explicit so curl -I and load-balancer
+        # probes work; Starlette does not auto-dispatch HEAD onto GET-only
+        # routes registered via @app.get, so we register both methods here.
         if getattr(app.state, "openapi_mirror_degraded", False):
             return JSONResponse(
                 {
@@ -572,6 +619,14 @@ def _register_openapi_mirror(app: FastAPI, mcp_obj) -> None:
                 status_code=503,
             )
         return app.state.openapi_doc
+
+    app.add_api_route(
+        "/openapi.json",
+        openapi_json,
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+        name="openapi_json",
+    )
 
 
 def run_uvicorn() -> None:
