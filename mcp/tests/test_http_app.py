@@ -264,3 +264,68 @@ async def test_healthz_zero_tools_returns_503():
     body = r.json()
     assert body["tools"] == 0
     assert body["status"] == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_healthz_list_tools_exception_returns_503():
+    """Verify BUG-004 (R5): if tm.list_tools() raises but the cached
+    _tools dict still has entries, healthz must NOT report ok. The
+    primary accessor erroring is a real symptom of a broken tool
+    manager and should restart the pod.
+    """
+    from starlette.applications import Starlette
+
+    class BadTM:
+        _tools = {"x": object(), "y": object()}  # cached dict still has entries
+
+        def list_tools(self):
+            raise RuntimeError("boom")
+
+    class BrokenMCP:
+        name = "broken"
+        _tool_manager = BadTM()
+
+        def streamable_http_app(self):
+            return Starlette()
+
+    app = create_app(mcp_obj=BrokenMCP())
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.get("/healthz")
+    assert r.status_code == 503, (
+        f"healthz reported {r.status_code} despite list_tools raising"
+    )
+    body = r.json()
+    assert body["status"] == "degraded"
+    assert body.get("reason") == "tool_manager_unreachable"
+
+
+@pytest.mark.asyncio
+async def test_create_app_strips_token_whitespace():
+    """Verify ADV-004 (R5): create_app() must normalize the configured
+    token, not only run_uvicorn(). Library/test callers should not be
+    bricked when they pass a token with a stray newline.
+    """
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSON
+    from starlette.routing import Route
+
+    async def echo_ok(_):
+        return StarletteJSON({"ok": True})
+
+    class StubMCP:
+        def streamable_http_app(self):
+            return Starlette(routes=[Route("/mcp", echo_ok, methods=["POST"])])
+
+    app = create_app(auth_token="s3cret\n", mcp_obj=StubMCP())
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.post(
+            "/mcp", headers={"Authorization": "Bearer s3cret"}
+        )
+    assert r.status_code != 401, (
+        "configured token with trailing newline bricked auth — "
+        "create_app must normalize the token like run_uvicorn does"
+    )

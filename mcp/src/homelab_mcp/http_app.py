@@ -30,10 +30,15 @@ def _tool_count(mcp_obj) -> int:
     FastMCP 1.x exposes a sync ``_tool_manager.list_tools()`` and an
     *async* ``mcp.list_tools()`` coroutine. Health/metrics endpoints
     must stay sync-friendly, so we read through the tool manager.
-    Falls back to private dicts if FastMCP renames things in a future
-    bump (degradation is fail-safe: zero count -> /healthz still 200,
-    but the ``homelab_mcp_up`` Prom gauge flips to 0 so alerting
-    catches it).
+
+    Returns -1 (sentinel: "tool manager errored") when the primary
+    accessor raises; the caller treats that as degraded. Returns 0
+    when the registry is reachable but empty (tools haven't been
+    registered yet, or were unregistered). Returns >0 on success.
+
+    Falls back to a cached ``_tools`` dict ONLY if the primary
+    accessor isn't callable; an exception from list_tools() must NOT
+    silently downgrade to a stale snapshot — verify BUG-004 (R5).
     """
     tm = getattr(mcp_obj, "_tool_manager", None)
     if tm is not None:
@@ -42,7 +47,11 @@ def _tool_count(mcp_obj) -> int:
             try:
                 return len(list_fn())
             except Exception:
-                pass
+                # Primary accessor errored. Do NOT fall through to
+                # the private dict — that would mask a broken tool
+                # manager behind a stale count. Signal degraded.
+                return -1
+        # No callable list_tools, but private dict may exist.
         tm_tools = getattr(tm, "_tools", None)
         if tm_tools is not None:
             try:
@@ -99,6 +108,16 @@ def create_app(
         from homelab_mcp import server  # noqa: F401
         mcp_obj = _mcp
 
+    # Defense-in-depth (verify ADV-004, R5): normalize the configured
+    # token at the create_app boundary too, not only in run_uvicorn().
+    # Library callers / tests / future entry points all get the same
+    # forgiveness for whitespace-padded tokens. Empty-after-strip
+    # downgrades to "no auth" — fail-closed against blank tokens is
+    # enforced in run_uvicorn(), not here, because programmatic
+    # callers may legitimately want no-auth via auth_token="".
+    if auth_token is not None:
+        auth_token = auth_token.strip() or None
+
     app = FastAPI(
         title="homelab-mcp",
         version="phase1",
@@ -133,6 +152,17 @@ def create_app(
     @app.get("/healthz")
     async def healthz():
         n = _tool_count(mcp_obj)
+        if n < 0:
+            # _tool_count signaled tool-manager error (verify BUG-004).
+            # K8s liveness probes only see HTTP status, so we MUST
+            # return non-200 so the pod gets restarted.
+            body = {
+                "status": "degraded",
+                "tools": 0,
+                "name": getattr(mcp_obj, "name", "homelab"),
+                "reason": "tool_manager_unreachable",
+            }
+            return JSONResponse(body, status_code=503)
         body = {
             "status": "ok" if n > 0 else "degraded",
             "tools": n,
@@ -148,13 +178,16 @@ def create_app(
     @app.get("/metrics")
     async def metrics():
         n = _tool_count(mcp_obj)
+        # _tool_count returns -1 on tool-manager error; clamp to 0
+        # for the prom output (up flips to 0 -> alerting catches it).
+        safe_n = max(n, 0)
         body = (
             "# HELP homelab_mcp_up 1 if the server has loaded tools.\n"
             "# TYPE homelab_mcp_up gauge\n"
-            f"homelab_mcp_up {1 if n > 0 else 0}\n"
+            f"homelab_mcp_up {1 if safe_n > 0 else 0}\n"
             "# HELP homelab_mcp_tools_total Number of registered FastMCP tools.\n"
             "# TYPE homelab_mcp_tools_total gauge\n"
-            f"homelab_mcp_tools_total {n}\n"
+            f"homelab_mcp_tools_total {safe_n}\n"
         )
         return PlainTextResponse(
             body, media_type="text/plain; version=0.0.4; charset=utf-8"
