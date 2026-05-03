@@ -91,3 +91,73 @@ async def test_healthz_open_even_when_token_set():
     ) as c:
         r = await c.get("/healthz")
     assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_healthz_trailing_slash_open_when_token_set():
+    """Verify ADV-004/ADV-006: trailing-slash probe paths must NOT 401.
+
+    Some Ingress controllers / Cloudflared / curl-with-redirect-follow
+    append a trailing slash. Those requests still reach the auth
+    middleware before FastAPI's redirect_slashes can issue a 307.
+    """
+    app = create_app(auth_token="s3cret")
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.get("/healthz/", follow_redirects=False)
+    assert r.status_code != 401, (
+        f"trailing-slash /healthz/ blocked by auth: {r.status_code}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_metrics_trailing_slash_open_when_token_set():
+    app = create_app(auth_token="s3cret")
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.get("/metrics/", follow_redirects=False)
+    assert r.status_code != 401
+
+
+@pytest.mark.asyncio
+async def test_lowercase_bearer_scheme_is_accepted():
+    """Verify BUG-007: scheme token is case-insensitive (RFC 7235/6750)."""
+    app = create_app(auth_token="s3cret")
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.post(
+            "/mcp/", json={}, headers={"Authorization": "bearer s3cret"}
+        )
+    assert r.status_code != 401, (
+        "lowercase 'bearer' rejected — auth must accept any-case scheme"
+    )
+
+
+@pytest.mark.asyncio
+async def test_healthz_zero_tools_returns_503():
+    """Verify BUG-004: empty tool registry must signal degraded.
+
+    K8s liveness probes only inspect HTTP status. A pod whose tool
+    registration silently failed (e.g. driver import error) would
+    otherwise stay alive indefinitely.
+    """
+    from starlette.applications import Starlette
+
+    class EmptyMCP:
+        name = "stub"
+
+        def streamable_http_app(self):
+            return Starlette()
+
+    app = create_app(mcp_obj=EmptyMCP())
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://t"
+    ) as c:
+        r = await c.get("/healthz")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["tools"] == 0
+    assert body["status"] == "degraded"

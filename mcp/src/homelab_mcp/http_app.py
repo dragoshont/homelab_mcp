@@ -110,12 +110,21 @@ def create_app(
     @app.middleware("http")
     async def auth_mw(request: Request, call_next):
         # Probes always open so K8s liveness/readiness never depend on
-        # secret rotation.
-        if request.url.path in ("/healthz", "/metrics"):
+        # secret rotation. Compare with rstrip('/') so trailing-slash
+        # variants (some Ingress controllers / probes append one) are
+        # not accidentally auth-blocked.
+        if request.url.path.rstrip("/") in ("/healthz", "/metrics"):
             return await call_next(request)
         if auth_token:
             hdr = request.headers.get("authorization", "")
-            if hdr != f"Bearer {auth_token}":
+            # RFC 7235/6750: the scheme token is case-insensitive.
+            # Accept "Bearer", "bearer", "BEARER", etc.
+            if not hdr.lower().startswith("bearer "):
+                return JSONResponse(
+                    {"error": "unauthorized"}, status_code=401
+                )
+            presented = hdr[len("bearer ") :].strip()
+            if presented != auth_token:
                 return JSONResponse(
                     {"error": "unauthorized"}, status_code=401
                 )
@@ -123,11 +132,18 @@ def create_app(
 
     @app.get("/healthz")
     async def healthz():
-        return {
-            "status": "ok",
-            "tools": _tool_count(mcp_obj),
+        n = _tool_count(mcp_obj)
+        body = {
+            "status": "ok" if n > 0 else "degraded",
+            "tools": n,
             "name": getattr(mcp_obj, "name", "homelab"),
         }
+        # Zero tools means tool registration failed (e.g. import-time
+        # error in a tools/* module). K8s liveness reads only the HTTP
+        # status, so we MUST return non-200 to trigger a restart.
+        if n == 0:
+            return JSONResponse(body, status_code=503)
+        return body
 
     @app.get("/metrics")
     async def metrics():

@@ -536,6 +536,7 @@ bundle = [
     { name = "pyyaml" },
 ]
 test = [
+    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
@@ -546,6 +547,7 @@ requires-dist = [
     { name = "dirigera", specifier = ">=1.2.7" },
     { name = "fastapi", specifier = ">=0.110.0" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.0.0" },
     { name = "pyatv", specifier = ">=0.16.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
